@@ -1,0 +1,42 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JobIntel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{% static 'resume_fixer/css/jobintel.css' %}" rel="stylesheet">
+</head>
+<body>
+<div class="app-shell d-flex">
+    <aside class="sidebar d-flex flex-column">
+        <a class="brand text-decoration-none" href="{% url 'dashboard' %}">
+            <span class="brand-mark"></span>
+            <span>JobIntel</span>
+        </a>
+        <div class="nav-section-label">Overview</div>
+        <nav class="nav flex-column gap-1">
+            <a class="side-link {% if page_key == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}"><span class="side-icon"></span><span>Dashboard</span></a>
+            <a class="side-link {% if page_key == 'analytics' %}active{% endif %}" href="{% url 'analytics' %}"><span class="side-icon"></span><span>Analytics</span></a>
+        </nav>
+        <div class="nav-section-label">Jobs</div>
+        <nav class="nav flex-column gap-1">
+            <a class="side-link {% if page_key == 'search_jobs' %}active{% endif %}" href="{% url 'search_jobs' %}"><span class="side-icon"></span><span>Search Jobs</span></a>
+            <a class="side-link {% if page_key == 'saved_jobs' %}active{% endif %}" href="{% url 'saved_jobs' %}"><span class="side-icon"></span><span>Saved Jobs</span></a>
+            <a class="side-link {% if page_key == 'job_alerts' %}active{% endif %}" href="{% url 'job_alerts' %}"><span class="side-icon"></span><span>Job Alerts</span></a>
+        </nav>
+        <div class="nav-section-label">Profile</div>
+        <nav class="nav flex-column gap-1">
+            <a class="side-link {% if page_key == 'resume' %}active{% endif %}" href="{% url 'resume' %}"><span class="side-icon"></span><span>Resume</span></a>
+            <a class="side-link {% if page_key == 'skill_gaps' %}active{% endif %}" href="{% url 'skill_gaps' %}"><span class="side-icon"></span><span>Skill Gaps</span></a>
+            <a class="side-link {% if page_key == 'settings' %}active{% endif %}" href="{% url 'settings' %}"><span class="side-icon"></span><span>Settings</span></a>
+        </nav>
+    </aside>
+    <main class="content flex-grow-1">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

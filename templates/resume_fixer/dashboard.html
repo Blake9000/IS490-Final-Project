@@ -1,0 +1,67 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">Market Overview</h1>
+        <p class="page-subtitle mb-0">Updated 12 min ago · 240,438 active postings</p>
+    </div>
+    <div class="filter-group d-flex flex-wrap gap-2">
+        <button class="filter-pill active">Software Eng.</button>
+        <button class="filter-pill">Remote only</button>
+        <button class="filter-pill">Entry level</button>
+        <button class="filter-button">+ Filter</button>
+    </div>
+</div>
+<div class="row g-3 mb-4">
+    {% for metric in metrics %}
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="metric-card h-100">
+            <div class="metric-label">{{ metric.label }}</div>
+            <div class="metric-value">{{ metric.value }}</div>
+            <div class="metric-change {{ metric.direction }}">{{ metric.change }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-8">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Top In-Demand Skills · Software Engineering</h2>
+                <a href="{% url 'skill_gaps' %}" class="view-link">View all →</a>
+            </div>
+            <div class="skill-list d-flex flex-column gap-3">
+                {% for skill in skills %}
+                <div class="skill-row">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="skill-name">{{ skill.name }}</span>
+                        <span class="skill-score">{{ skill.score }}%</span>
+                    </div>
+                    <div class="skill-track">
+                        <div class="skill-bar skill-{{ skill.slug }}"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-4">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">AI Insights</h2>
+                <a href="{% url 'analytics' %}" class="view-link">All insights</a>
+            </div>
+            <div class="insight-list d-flex flex-column gap-3">
+                {% for insight in insights %}
+                <article class="insight-card">
+                    <div class="d-flex gap-2 align-items-start">
+                        <span class="insight-dot {{ insight.tone }}"></span>
+                        <p class="mb-0"><strong>{{ insight.title }}</strong> {{ insight.text }}</p>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}
