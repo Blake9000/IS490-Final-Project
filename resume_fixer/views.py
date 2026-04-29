@@ -40,6 +40,10 @@ pages = {
 }
 
 
+def login_page(request):
+    return render(request, 'resume_fixer/login.html', {'page_key': 'login'})
+
+
 def dashboard(request):
     return render(request, 'resume_fixer/dashboard.html', {
         'page_key': 'dashboard',

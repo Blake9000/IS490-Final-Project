@@ -5,11 +5,14 @@
         <h1 class="page-title mb-1">Market Overview</h1>
         <p class="page-subtitle mb-0">Updated 12 min ago · 240,438 active postings</p>
     </div>
-    <div class="filter-group d-flex flex-wrap gap-2">
-        <button class="filter-pill active">Software Eng.</button>
-        <button class="filter-pill">Remote only</button>
-        <button class="filter-pill">Entry level</button>
-        <button class="filter-button">+ Filter</button>
+    <div class="dashboard-actions d-flex flex-wrap gap-2">
+        <div class="filter-group d-flex flex-wrap gap-2">
+            <button class="filter-pill active">Software Eng.</button>
+            <button class="filter-pill">Remote only</button>
+            <button class="filter-pill">Entry level</button>
+            <button class="filter-button">+ Filter</button>
+        </div>
+        <a class="logout-button" href="{% url 'login' %}">Logout</a>
     </div>
 </div>
 <div class="row g-3 mb-4">
