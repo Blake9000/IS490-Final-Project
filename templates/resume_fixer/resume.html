@@ -1,0 +1,76 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ page_title }}</h1>
+        <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
+    </div>
+</div>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-5">
+        <section class="panel h-100">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Upload Resume</h2>
+            </div>
+            <form method="post" enctype="multipart/form-data" class="stacked-form">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="form-field {% if field.name == 'extracted_text' %}wide-field{% endif %}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="field-help">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button class="auth-submit inline-submit" type="submit">Upload and Analyze</button>
+            </form>
+            <p class="page-subtitle mt-3 mb-0">Text, Markdown, and CSV files can be read automatically. PDF and DOCX files are stored, but paste the text if you want skill extraction without adding parsing libraries.</p>
+        </section>
+    </div>
+    <div class="col-12 col-xl-7">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Uploaded Resumes</h2>
+                <span class="panel-count">{{ resumes|length }}</span>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for item in resumes %}
+                <article class="job-card">
+                    <div class="d-flex flex-wrap justify-content-between gap-3">
+                        <div>
+                            <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'resume_detail' item.id %}">{{ item.title }}</a></h3>
+                            <p class="job-meta mb-0">{{ item.resume_skills.count }} extracted skill(s) · {{ item.updated_at|date:'M j, Y g:i A' }}</p>
+                        </div>
+                        <div class="job-side text-sm-end">
+                            {% if item.is_primary %}<div class="job-match">Primary</div>{% else %}<div class="metric-change neutral">Secondary</div>{% endif %}
+                        </div>
+                    </div>
+                    <div class="tag-row mt-3">
+                        {% for resume_skill in item.resume_skills.all|slice:':8' %}
+                        <span class="soft-tag">{{ resume_skill.skill.name }}</span>
+                        {% empty %}
+                        <span class="soft-tag">No extracted skills</span>
+                        {% endfor %}
+                    </div>
+                    <div class="card-actions mt-3">
+                        <a class="view-link" href="{% url 'resume_detail' item.id %}">View matches</a>
+                        {% if not item.is_primary %}
+                        <form method="post" action="{% url 'set_primary_resume' item.id %}">
+                            {% csrf_token %}
+                            <button class="link-button" type="submit">Set primary</button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="{% url 'delete_resume' item.id %}">
+                            {% csrf_token %}
+                            <button class="link-button danger-link" type="submit">Delete</button>
+                        </form>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No resumes uploaded yet.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

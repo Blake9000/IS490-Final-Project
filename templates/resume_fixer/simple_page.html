@@ -5,78 +5,8 @@
         <h1 class="page-title mb-1">{{ page_title }}</h1>
         <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
     </div>
-    <div class="filter-group d-flex flex-wrap gap-2">
-        <button class="filter-pill active">Software Eng.</button>
-        <button class="filter-pill">Remote only</button>
-        <button class="filter-button">+ Filter</button>
-    </div>
 </div>
-<div class="row g-3 mb-4">
-    <div class="col-12 col-lg-4">
-        <div class="metric-card h-100">
-            <div class="metric-label">Profile Match</div>
-            <div class="metric-value">72%</div>
-            <div class="metric-change up">+6% after Python weighting</div>
-        </div>
-    </div>
-    <div class="col-12 col-lg-4">
-        <div class="metric-card h-100">
-            <div class="metric-label">Tracked Roles</div>
-            <div class="metric-value">128</div>
-            <div class="metric-change neutral">Across 5 saved searches</div>
-        </div>
-    </div>
-    <div class="col-12 col-lg-4">
-        <div class="metric-card h-100">
-            <div class="metric-label">Skill Gap Count</div>
-            <div class="metric-value">4</div>
-            <div class="metric-change down">Cloud depth is the largest gap</div>
-        </div>
-    </div>
-</div>
-<div class="row g-3 align-items-stretch">
-    <div class="col-12 col-xl-7">
-        <section class="panel h-100">
-            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
-                <h2 class="panel-title mb-0">Recommended Roles</h2>
-                <a href="{% url 'search_jobs' %}" class="view-link">Search all →</a>
-            </div>
-            <div class="job-list d-flex flex-column gap-3">
-                {% for job in jobs %}
-                <article class="job-card d-flex flex-wrap justify-content-between gap-3">
-                    <div>
-                        <h3 class="job-title mb-1">{{ job.title }}</h3>
-                        <p class="job-meta mb-0">{{ job.company }} · {{ job.location }}</p>
-                    </div>
-                    <div class="job-side text-sm-end">
-                        <div class="job-salary">{{ job.salary }}</div>
-                        <div class="job-match">{{ job.match }} match</div>
-                    </div>
-                </article>
-                {% endfor %}
-            </div>
-        </section>
-    </div>
-    <div class="col-12 col-xl-5">
-        <section class="panel h-100">
-            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
-                <h2 class="panel-title mb-0">Skill Signals</h2>
-                <a href="{% url 'skill_gaps' %}" class="view-link">View all →</a>
-            </div>
-            <div class="skill-list d-flex flex-column gap-3">
-                {% for skill in skills|slice:':5' %}
-                <div class="skill-row">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span class="skill-name">{{ skill.name }}</span>
-                        <span class="skill-score">{{ skill.score }}%</span>
-                    </div>
-                    <div class="skill-track">
-                        <div class="skill-bar skill-{{ skill.slug }}"></div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </section>
-    </div>
-</div>
+<section class="panel">
+    <div class="empty-state">This page has been replaced by a model-backed view.</div>
+</section>
 {% endblock %}

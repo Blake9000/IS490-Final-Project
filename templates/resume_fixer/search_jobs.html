@@ -1,0 +1,133 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ page_title }}</h1>
+        <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
+    </div>
+</div>
+<section class="panel compact-panel mb-4">
+    <form method="get" class="search-grid">
+        <div class="form-field wide-field">
+            <label for="q">Keyword</label>
+            <input id="q" class="app-input" type="text" name="q" value="{{ filters.q }}" placeholder="Title, company, description, or skill">
+        </div>
+        <div class="form-field">
+            <label for="location">Location</label>
+            <input id="location" class="app-input" type="text" name="location" value="{{ filters.location }}" placeholder="Remote, Chicago, CA">
+        </div>
+        <div class="form-field">
+            <label for="remote_type">Work type</label>
+            <select id="remote_type" class="app-input form-select" name="remote_type">
+                <option value="">Any</option>
+                {% for value,label in remote_choices %}
+                <option value="{{ value }}" {% if filters.remote_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-field">
+            <label for="experience_level">Level</label>
+            <select id="experience_level" class="app-input form-select" name="experience_level">
+                <option value="">Any</option>
+                {% for value,label in experience_choices %}
+                <option value="{{ value }}" {% if filters.experience_level == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-field">
+            <label for="skill">Skill</label>
+            <input id="skill" class="app-input" type="text" name="skill" value="{{ filters.skill }}" placeholder="Python, SQL, Docker">
+        </div>
+        <div class="form-actions align-self-end">
+            <button class="auth-submit inline-submit" type="submit">Search</button>
+        </div>
+    </form>
+</section>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-7">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Jobs</h2>
+                <span class="panel-count">{{ job_cards|length }} result(s)</span>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for card in job_cards %}
+                <article class="job-card">
+                    <div class="d-flex flex-wrap justify-content-between gap-3">
+                        <div>
+                            <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'job_detail' card.job.id %}">{{ card.job.title }}</a></h3>
+                            <p class="job-meta mb-0">{% if card.job.company %}{{ card.job.company.name }}{% else %}Unknown Company{% endif %} · {{ card.job.location|default:'Location not listed' }}</p>
+                        </div>
+                        <div class="job-side text-sm-end">
+                            <div class="job-salary">{{ card.salary }}</div>
+                            <div class="job-match">{% if card.match %}{{ card.match.match_score }}% match{% else %}No resume match{% endif %}</div>
+                        </div>
+                    </div>
+                    <div class="tag-row mt-3">
+                        <span class="soft-tag">{{ card.job.get_remote_type_display }}</span>
+                        <span class="soft-tag">{{ card.job.get_experience_level_display }}</span>
+                        {% for item in card.job.job_skills.all|slice:':5' %}
+                        <span class="soft-tag">{{ item.skill.name }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="card-actions mt-3">
+                        <a class="view-link" href="{% url 'job_detail' card.job.id %}">Details</a>
+                        {% if card.saved %}
+                        <form method="post" action="{% url 'unsave_job' card.job.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button class="link-button" type="submit">Remove saved</button>
+                        </form>
+                        {% else %}
+                        <form method="post" action="{% url 'save_job' card.job.id %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button class="link-button" type="submit">Save job</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No jobs match the current filters.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-5">
+        <section id="add-job" class="panel mb-3">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Add Job Posting</h2>
+            </div>
+            <form method="post" class="stacked-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="job">
+                {% for field in job_form %}
+                <div class="form-field {% if field.name == 'description' %}wide-field{% endif %}">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button class="auth-submit inline-submit" type="submit">Save Posting</button>
+            </form>
+        </section>
+        <section class="panel compact-panel">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Save Current Search</h2>
+            </div>
+            <form method="post" class="stacked-form">
+                {% csrf_token %}
+                <input type="hidden" name="form_type" value="search">
+                {% for field in search_form %}
+                <div class="form-field">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% for error in field.errors %}<div class="form-error">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                <button class="auth-submit inline-submit" type="submit">Save Search</button>
+            </form>
+        </section>
+    </div>
+</div>
+{% endblock %}

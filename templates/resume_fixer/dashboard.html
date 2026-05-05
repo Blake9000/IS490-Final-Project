@@ -3,16 +3,16 @@
 <div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
     <div>
         <h1 class="page-title mb-1">Market Overview</h1>
-        <p class="page-subtitle mb-0">Updated 12 min ago · 240,438 active postings</p>
+        <p class="page-subtitle mb-0">Stored job postings, resume matches, and extracted skill signals</p>
     </div>
     <div class="dashboard-actions d-flex flex-wrap gap-2">
-        <div class="filter-group d-flex flex-wrap gap-2">
-            <button class="filter-pill active">Software Eng.</button>
-            <button class="filter-pill">Remote only</button>
-            <button class="filter-pill">Entry level</button>
-            <button class="filter-button">+ Filter</button>
-        </div>
-        <a class="logout-button" href="{% url 'login' %}">Logout</a>
+        <a class="filter-button text-decoration-none" href="{% url 'resume_upload' %}">Upload Resume</a>
+        <a class="filter-pill text-decoration-none" href="{% url 'search_jobs' %}">Search Jobs</a>
+        <a class="filter-pill text-decoration-none" href="{% url 'search_jobs' %}#add-job">Add Job</a>
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="logout-button" type="submit">Logout</button>
+        </form>
     </div>
 </div>
 <div class="row g-3 mb-4">
@@ -27,11 +27,35 @@
     {% endfor %}
 </div>
 <div class="row g-3 align-items-stretch">
-    <div class="col-12 col-xl-8">
+    <div class="col-12 col-xl-7">
         <section class="panel h-100">
             <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
-                <h2 class="panel-title mb-0">Top In-Demand Skills · Software Engineering</h2>
-                <a href="{% url 'skill_gaps' %}" class="view-link">View all →</a>
+                <h2 class="panel-title mb-0">Recommended Roles</h2>
+                <a href="{% url 'search_jobs' %}" class="view-link">Search all →</a>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for job in jobs %}
+                <article class="job-card d-flex flex-wrap justify-content-between gap-3">
+                    <div>
+                        <h3 class="job-title mb-1"><a href="{% url 'job_detail' job.id %}" class="job-title-link">{{ job.title }}</a></h3>
+                        <p class="job-meta mb-0">{{ job.company }} · {{ job.location }}</p>
+                    </div>
+                    <div class="job-side text-sm-end">
+                        <div class="job-salary">{{ job.salary }}</div>
+                        <div class="job-match">{{ job.match }} match</div>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No jobs exist yet. Add a job posting to start generating matches.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-5">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Top In-Demand Skills</h2>
+                <a href="{% url 'analytics' %}" class="view-link">View analytics →</a>
             </div>
             <div class="skill-list d-flex flex-column gap-3">
                 {% for skill in skills %}
@@ -41,18 +65,39 @@
                         <span class="skill-score">{{ skill.score }}%</span>
                     </div>
                     <div class="skill-track">
-                        <div class="skill-bar skill-{{ skill.slug }}"></div>
+                        <div class="skill-bar" style="width: {{ skill.score }}%;"></div>
                     </div>
                 </div>
+                {% empty %}
+                <div class="empty-state">No skill data is available yet.</div>
                 {% endfor %}
             </div>
         </section>
     </div>
-    <div class="col-12 col-xl-4">
-        <section class="panel h-100">
+</div>
+<div class="row g-3 mt-1 align-items-stretch">
+    <div class="col-12 col-xl-7">
+        <section class="panel compact-panel h-100">
             <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
-                <h2 class="panel-title mb-0">AI Insights</h2>
-                <a href="{% url 'analytics' %}" class="view-link">All insights</a>
+                <h2 class="panel-title mb-0">Resume Status</h2>
+                <a href="{% url 'resume' %}" class="view-link">Manage resumes →</a>
+            </div>
+            {% if resume %}
+            <article class="detail-block">
+                <div class="detail-label">Primary resume</div>
+                <h3 class="job-title mb-1">{{ resume.title }}</h3>
+                <p class="job-meta mb-0">{{ resume.resume_skills.count }} extracted skill(s) · last updated {{ resume.updated_at|date:'M j, Y' }}</p>
+            </article>
+            {% else %}
+            <div class="empty-state">Upload a resume to calculate match scores against stored jobs.</div>
+            {% endif %}
+        </section>
+    </div>
+    <div class="col-12 col-xl-5">
+        <section class="panel compact-panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Resume Signals</h2>
+                <a href="{% url 'skill_gaps' %}" class="view-link">Skill gaps →</a>
             </div>
             <div class="insight-list d-flex flex-column gap-3">
                 {% for insight in insights %}

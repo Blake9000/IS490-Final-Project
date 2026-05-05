@@ -1,0 +1,79 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ resume_obj.title }}</h1>
+        <p class="page-subtitle mb-0">{{ resume_obj.resume_skills.count }} extracted skill(s) · {{ resume_obj.updated_at|date:'M j, Y g:i A' }}</p>
+    </div>
+    <div class="dashboard-actions d-flex flex-wrap gap-2">
+        <a class="filter-pill text-decoration-none" href="{% url 'resume' %}">Back to Uploads</a>
+        {% if resume_obj.file %}<a class="filter-pill text-decoration-none" href="{% url 'resume_file' resume_obj.id %}">Download File</a>{% endif %}
+        {% if not resume_obj.is_primary %}
+        <form method="post" action="{% url 'set_primary_resume' resume_obj.id %}">
+            {% csrf_token %}
+            <button class="filter-button" type="submit">Set Primary</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-5">
+        <section class="panel h-100">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Extracted Resume Skills</h2>
+            </div>
+            <div class="tag-row mb-4">
+                {% for item in resume_obj.resume_skills.all %}
+                <span class="soft-tag">{{ item.skill.name }}</span>
+                {% empty %}
+                <span class="empty-state">No known skills were found in this resume text.</span>
+                {% endfor %}
+            </div>
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Resume Text</h2>
+            </div>
+            <div class="long-text resume-text">{{ resume_obj.extracted_text|default:'No text was stored for this resume.'|linebreaks }}</div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-7">
+        <section class="panel h-100">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Job Matches</h2>
+                <span class="panel-count">{{ matches|length }}</span>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for match in matches %}
+                <article class="job-card">
+                    <div class="d-flex flex-wrap justify-content-between gap-3">
+                        <div>
+                            <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'job_detail' match.job_posting.id %}">{{ match.job_posting.title }}</a></h3>
+                            <p class="job-meta mb-0">{% if match.job_posting.company %}{{ match.job_posting.company.name }}{% else %}Unknown Company{% endif %} · {{ match.job_posting.location|default:'Location not listed' }}</p>
+                        </div>
+                        <div class="job-side text-sm-end">
+                            <div class="job-match">{{ match.match_score }}%</div>
+                            <div class="metric-change neutral">{{ match.summary }}</div>
+                        </div>
+                    </div>
+                    <div class="match-columns mt-3">
+                        <div>
+                            <div class="detail-label">Strengths</div>
+                            <div class="tag-row">
+                                {% for skill in match.strengths %}<span class="soft-tag good-tag">{{ skill }}</span>{% empty %}<span class="soft-tag">None found</span>{% endfor %}
+                            </div>
+                        </div>
+                        <div>
+                            <div class="detail-label">Missing</div>
+                            <div class="tag-row">
+                                {% for skill in match.missing_skills %}<span class="soft-tag warn-tag">{{ skill }}</span>{% empty %}<span class="soft-tag good-tag">No extracted gaps</span>{% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No job matches exist yet. Add a job posting to generate matches.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

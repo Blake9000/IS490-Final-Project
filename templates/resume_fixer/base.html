@@ -28,12 +28,27 @@
         </nav>
         <div class="nav-section-label">Profile</div>
         <nav class="nav flex-column gap-1">
-            <a class="side-link {% if page_key == 'resume' %}active{% endif %}" href="{% url 'resume' %}"><span class="side-icon"></span><span>Resume</span></a>
+            <a class="side-link {% if page_key == 'resume' %}active{% endif %}" href="{% url 'resume' %}"><span class="side-icon"></span><span>Resume Upload</span></a>
             <a class="side-link {% if page_key == 'skill_gaps' %}active{% endif %}" href="{% url 'skill_gaps' %}"><span class="side-icon"></span><span>Skill Gaps</span></a>
             <a class="side-link {% if page_key == 'settings' %}active{% endif %}" href="{% url 'settings' %}"><span class="side-icon"></span><span>Settings</span></a>
         </nav>
+        <div class="sidebar-account mt-auto">
+            <div class="account-label">Signed in as</div>
+            <div class="account-name">{{ request.user.username }}</div>
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="logout-button sidebar-logout" type="submit">Logout</button>
+            </form>
+        </div>
     </aside>
     <main class="content flex-grow-1">
+        {% if messages %}
+        <div class="message-stack mb-4">
+            {% for message in messages %}
+            <div class="app-message {{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 </div>

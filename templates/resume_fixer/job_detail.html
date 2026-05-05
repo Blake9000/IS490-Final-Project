@@ -1,0 +1,83 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ job.title }}</h1>
+        <p class="page-subtitle mb-0">{% if job.company %}{{ job.company.name }}{% else %}Unknown Company{% endif %} · {{ job.location|default:'Location not listed' }}</p>
+    </div>
+    <div class="dashboard-actions d-flex flex-wrap gap-2">
+        <a class="filter-pill text-decoration-none" href="{% url 'search_jobs' %}">Back to Search</a>
+        {% if saved %}
+        <form method="post" action="{% url 'unsave_job' job.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'job_detail' job.id %}">
+            <button class="logout-button" type="submit">Remove Saved</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'save_job' job.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'job_detail' job.id %}">
+            <button class="filter-button" type="submit">Save Job</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-7">
+        <section class="panel h-100">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Job Description</h2>
+            </div>
+            <div class="detail-block mb-3">
+                <div class="detail-label">Salary</div>
+                <div class="detail-value">{{ salary }}</div>
+            </div>
+            <div class="tag-row mb-3">
+                <span class="soft-tag">{{ job.get_remote_type_display }}</span>
+                <span class="soft-tag">{{ job.get_employment_type_display }}</span>
+                <span class="soft-tag">{{ job.get_experience_level_display }}</span>
+                {% if job.source_url %}<a class="soft-tag text-decoration-none" href="{{ job.source_url }}">Source Link</a>{% endif %}
+            </div>
+            <div class="long-text">{{ job.description|linebreaks }}</div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-5">
+        <section class="panel mb-3">
+            <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
+                <h2 class="panel-title mb-0">Extracted Skills</h2>
+                <span class="panel-count">{{ job.job_skills.count }}</span>
+            </div>
+            <div class="tag-row">
+                {% for item in job.job_skills.all %}
+                <span class="soft-tag">{{ item.skill.name }} · {{ item.get_importance_display }}</span>
+                {% empty %}
+                <span class="empty-state">No known skills were detected in this posting.</span>
+                {% endfor %}
+            </div>
+        </section>
+        <section class="panel compact-panel">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Resume Matches</h2>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for match in matches %}
+                <article class="job-card">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                            <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'resume_detail' match.resume.id %}">{{ match.resume.title }}</a></h3>
+                            <p class="job-meta mb-0">{{ match.summary }}</p>
+                        </div>
+                        <div class="job-match">{{ match.match_score }}%</div>
+                    </div>
+                    <div class="tag-row mt-3">
+                        {% for skill in match.strengths|slice:':4' %}<span class="soft-tag">{{ skill }}</span>{% endfor %}
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">Upload a resume to generate matches for this job.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

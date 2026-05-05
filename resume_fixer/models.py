@@ -2,6 +2,11 @@ from django.conf import settings
 from django.db import models
 
 
+def resume_upload_path(instance, filename):
+    user_id = instance.user_id or 'unassigned'
+    return f'resumes/user_{user_id}/{filename}'
+
+
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -52,7 +57,7 @@ class Skill(TimeStampedModel):
 class Resume(TimeStampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='resumes')
     title = models.CharField(max_length=150)
-    file = models.FileField(upload_to='resumes/', blank=True)
+    file = models.FileField(upload_to=resume_upload_path, blank=True)
     extracted_text = models.TextField(blank=True)
     parsed_data = models.JSONField(default=dict, blank=True)
     is_primary = models.BooleanField(default=False)

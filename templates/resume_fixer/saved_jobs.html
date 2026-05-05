@@ -1,0 +1,43 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ page_title }}</h1>
+        <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
+    </div>
+    <a class="filter-button text-decoration-none" href="{% url 'search_jobs' %}">Search Jobs</a>
+</div>
+<section class="panel">
+    <div class="job-list d-flex flex-column gap-3">
+        {% for card in saved_cards %}
+        <article class="job-card">
+            <div class="d-flex flex-wrap justify-content-between gap-3">
+                <div>
+                    <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'job_detail' card.job.id %}">{{ card.job.title }}</a></h3>
+                    <p class="job-meta mb-0">{% if card.job.company %}{{ card.job.company.name }}{% else %}Unknown Company{% endif %} · {{ card.job.location|default:'Location not listed' }}</p>
+                </div>
+                <div class="job-side text-sm-end">
+                    <div class="job-salary">{{ card.salary }}</div>
+                    <div class="job-match">{% if card.match %}{{ card.match.match_score }}% match{% else %}No resume match{% endif %}</div>
+                </div>
+            </div>
+            <div class="tag-row mt-3">
+                <span class="soft-tag">Saved {{ card.saved.created_at|date:'M j, Y' }}</span>
+                <span class="soft-tag">{{ card.job.get_remote_type_display }}</span>
+                {% for item in card.job.job_skills.all|slice:':5' %}<span class="soft-tag">{{ item.skill.name }}</span>{% endfor %}
+            </div>
+            <div class="card-actions mt-3">
+                <a class="view-link" href="{% url 'job_detail' card.job.id %}">Details</a>
+                <form method="post" action="{% url 'unsave_job' card.job.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{% url 'saved_jobs' %}">
+                    <button class="link-button danger-link" type="submit">Remove</button>
+                </form>
+            </div>
+        </article>
+        {% empty %}
+        <div class="empty-state">No saved jobs yet. Save jobs from the search page.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

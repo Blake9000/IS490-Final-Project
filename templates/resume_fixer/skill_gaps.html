@@ -1,0 +1,68 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ page_title }}</h1>
+        <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
+    </div>
+    <a class="filter-button text-decoration-none" href="{% url 'resume_upload' %}">Upload Resume</a>
+</div>
+<div class="row g-3 align-items-stretch">
+    <div class="col-12 col-xl-5">
+        <section class="panel h-100">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Gap Summary</h2>
+            </div>
+            {% if resume_obj %}
+            <div class="detail-block mb-3">
+                <div class="detail-label">Compared resume</div>
+                <div class="detail-value">{{ resume_obj.title }}</div>
+            </div>
+            {% else %}
+            <div class="empty-state">No resume uploaded yet.</div>
+            {% endif %}
+            <div class="job-list d-flex flex-column gap-3">
+                {% for row in missing_rows %}
+                <article class="insight-card">
+                    <div class="d-flex justify-content-between align-items-start gap-3">
+                        <p class="mb-0"><strong>{{ row.name }}</strong> missing from {{ row.count }} match result(s).</p>
+                        <span class="soft-tag warn-tag">Gap</span>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No recurring skill gaps found.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+    <div class="col-12 col-xl-7">
+        <section class="panel h-100">
+            <div class="panel-heading mb-3">
+                <h2 class="panel-title mb-0">Matches and Missing Skills</h2>
+            </div>
+            <div class="job-list d-flex flex-column gap-3">
+                {% for match in matches %}
+                <article class="job-card">
+                    <div class="d-flex flex-wrap justify-content-between gap-3">
+                        <div>
+                            <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'job_detail' match.job_posting.id %}">{{ match.job_posting.title }}</a></h3>
+                            <p class="job-meta mb-0">{% if match.job_posting.company %}{{ match.job_posting.company.name }}{% else %}Unknown Company{% endif %}</p>
+                        </div>
+                        <div class="job-match">{{ match.match_score }}%</div>
+                    </div>
+                    <div class="tag-row mt-3">
+                        {% for gap in match.skill_gaps.all %}
+                        <span class="soft-tag warn-tag">{{ gap.skill.name }} · {{ gap.get_priority_display }}</span>
+                        {% empty %}
+                        <span class="soft-tag good-tag">No extracted gaps</span>
+                        {% endfor %}
+                    </div>
+                </article>
+                {% empty %}
+                <div class="empty-state">No match records exist yet.</div>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

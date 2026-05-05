@@ -1,0 +1,46 @@
+{% extends 'resume_fixer/base.html' %}
+{% block content %}
+<div class="top-row d-flex flex-wrap align-items-start justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="page-title mb-1">{{ page_title }}</h1>
+        <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
+    </div>
+    <a class="filter-button text-decoration-none" href="{% url 'search_jobs' %}">Create Search</a>
+</div>
+<section class="panel">
+    <div class="job-list d-flex flex-column gap-3">
+        {% for item in searches %}
+        <article class="job-card">
+            <div class="d-flex flex-wrap justify-content-between gap-3">
+                <div>
+                    <h3 class="job-title mb-1">{{ item.name }}</h3>
+                    <p class="job-meta mb-0">{{ item.query|default:'No keyword' }} · {{ item.location|default:'Any location' }}</p>
+                </div>
+                <div class="job-side text-sm-end">
+                    <div class="job-match">{% if item.is_alert_enabled %}Alerts enabled{% else %}Alerts off{% endif %}</div>
+                    <div class="metric-change neutral">{% if item.remote_only %}Remote only{% else %}Any work type{% endif %}</div>
+                </div>
+            </div>
+            <div class="tag-row mt-3">
+                {% if item.min_salary %}<span class="soft-tag">Minimum ${{ item.min_salary }}</span>{% endif %}
+                {% for key,value in item.filters.items %}{% if value %}<span class="soft-tag">{{ key }}: {{ value }}</span>{% endif %}{% endfor %}
+            </div>
+            <div class="card-actions mt-3">
+                <form method="get" action="{% url 'search_jobs' %}">
+                    <input type="hidden" name="q" value="{{ item.query }}">
+                    <input type="hidden" name="location" value="{{ item.location }}">
+                    {% for key,value in item.filters.items %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+                    <button class="link-button" type="submit">Run search</button>
+                </form>
+                <form method="post" action="{% url 'delete_saved_search' item.id %}">
+                    {% csrf_token %}
+                    <button class="link-button danger-link" type="submit">Delete</button>
+                </form>
+            </div>
+        </article>
+        {% empty %}
+        <div class="empty-state">No saved searches yet. Use Search Jobs to save a filter set.</div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
