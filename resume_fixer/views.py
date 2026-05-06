@@ -19,6 +19,7 @@ from .forms import (
 from .models import Company, JobPosting, Resume, ResumeJobMatch, SavedJob, SavedJobSearch, SkillTrendSnapshot, UserProfile
 from .services import (
     common_missing_skills,
+    dashboard_ai_insights,
     dashboard_metrics,
     extract_job_skills,
     extract_resume_skills,
@@ -116,22 +117,7 @@ def dashboard(request):
                 'source': job.source_name or 'Stored',
             })
 
-    insights = []
-    top_skills = top_skill_rows(4)
-    for skill in top_skills:
-        insights.append({
-            'title': skill['name'],
-            'text': f'appears in {skill["count"]} stored posting(s), representing {skill["score"]}% of active jobs.',
-            'tone': 'green' if skill['score'] >= 50 else 'blue',
-        })
-    for missing in common_missing_skills(user, 2):
-        insights.append({
-            'title': missing['name'],
-            'text': f'is missing across {missing["count"]} current match result(s).',
-            'tone': 'yellow',
-        })
-    if not insights:
-        insights.append({'title': 'No data yet', 'text': 'Upload a resume or add job postings to generate signals.', 'tone': 'blue'})
+    insights = dashboard_ai_insights(user)
 
     return render(request, 'resume_fixer/dashboard.html', {
         'page_key': 'dashboard',

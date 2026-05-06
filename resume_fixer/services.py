@@ -1,5 +1,6 @@
 import re
 import json
+import hashlib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -14,6 +15,7 @@ from threading import Lock
 from xml.etree import ElementTree
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import OperationalError
 from django.db.models import Avg, Count, Q
 from django.utils import timezone
@@ -1188,11 +1190,25 @@ def filter_jobs(query='', location='', remote_type='', experience_level='', skil
     return qs.distinct()
 
 
-def top_skill_rows(limit=8):
+NON_TECH_DEMAND_SKILLS = {
+    'communication',
+    'customer service',
+    'leadership',
+    'product management',
+    'project management',
+    'requirements analysis',
+}
+
+
+def top_skill_rows(limit=8, technical_only=True):
     total_jobs = JobPosting.objects.filter(is_active=True).count()
+    qs = JobSkill.objects.filter(job_posting__is_active=True)
+    if technical_only:
+        qs = qs.exclude(skill__category=Skill.Category.SOFT_SKILL).exclude(
+            skill__normalized_name__in=NON_TECH_DEMAND_SKILLS
+        )
     counts = (
-        JobSkill.objects
-        .filter(job_posting__is_active=True)
+        qs
         .values('skill__id', 'skill__name', 'skill__normalized_name')
         .annotate(posting_count=Count('job_posting', distinct=True))
         .order_by('-posting_count', 'skill__normalized_name')[:limit]
@@ -1226,7 +1242,7 @@ def dashboard_metrics(user):
         match = ResumeJobMatch.objects.filter(resume=resume).order_by('-match_score').first()
     match_text = f'{match.match_score}%' if match else 'Upload'
     return [
-        {'label': 'Top Skill Demand', 'value': top_skill_name, 'change': f'{total_jobs} active posting(s)', 'direction': 'up'},
+        {'label': 'Top Technical Skill', 'value': top_skill_name, 'change': f'{total_jobs} active posting(s)', 'direction': 'up'},
         {'label': 'Avg. Salary Range', 'value': avg_salary_text, 'change': 'Based on stored postings', 'direction': 'neutral'},
         {'label': 'Open Roles', 'value': total_jobs, 'change': f'{saved_count} saved by you', 'direction': 'neutral'},
         {'label': 'Best Match Score', 'value': match_text, 'change': 'Semantic + skill overlap blend', 'direction': 'up' if match else 'neutral'},
@@ -1271,6 +1287,143 @@ def common_missing_skills(user, limit=8):
         names.extend(match.missing_skills or [])
     counts = Counter(names)
     return [{'name': name, 'count': count} for name, count in counts.most_common(limit)]
+
+
+def openai_response_text(payload):
+    if payload.get('output_text'):
+        return payload['output_text']
+    parts = []
+    for item in payload.get('output', []):
+        for content in item.get('content', []):
+            if content.get('type') in ('output_text', 'text') and content.get('text'):
+                parts.append(content['text'])
+    return '\n'.join(parts).strip()
+
+
+def fallback_ai_insights(context):
+    insights = []
+    top_skills = context.get('top_skills') or []
+    missing_skills = context.get('missing_skills') or []
+    total_jobs = context.get('total_jobs') or 0
+    best_match = context.get('best_match')
+
+    if top_skills:
+        skill = top_skills[0]
+        insights.append({
+            'title': skill['name'],
+            'text': f'appears in {skill["count"]} of {total_jobs} active posting(s), or {skill["score"]}% of the tracked market.',
+            'tone': 'green' if skill['score'] >= 50 else 'blue',
+        })
+    if len(top_skills) > 1:
+        skill_names = ', '.join(item['name'] for item in top_skills[1:4])
+        insights.append({
+            'title': 'Skill Cluster',
+            'text': f'{skill_names} are also showing up frequently across current postings.',
+            'tone': 'blue',
+        })
+    if missing_skills:
+        missing = missing_skills[0]
+        insights.append({
+            'title': missing['name'],
+            'text': f'is the most common resume gap, missing across {missing["count"]} current match result(s).',
+            'tone': 'yellow',
+        })
+    if best_match:
+        insights.append({
+            'title': 'Best Match',
+            'text': f'your strongest current resume-job fit is {best_match["score"]}% for {best_match["title"]}.',
+            'tone': 'green',
+        })
+    if not insights:
+        insights.append({
+            'title': 'More Data Needed',
+            'text': 'refresh jobs and upload a resume to generate market and match insights.',
+            'tone': 'blue',
+        })
+    return insights[:4]
+
+
+def dashboard_ai_insights(user):
+    top_skills = top_skill_rows(6)
+    missing_skills = common_missing_skills(user, 4)
+    total_jobs = JobPosting.objects.filter(is_active=True).count()
+    resume = latest_resume_for_user(user)
+    best_match = None
+    if resume:
+        match = (
+            ResumeJobMatch.objects
+            .select_related('job_posting')
+            .filter(user=user, resume=resume)
+            .order_by('-match_score')
+            .first()
+        )
+        if match:
+            best_match = {
+                'title': match.job_posting.title,
+                'score': float(match.match_score),
+                'missing_skills': match.missing_skills[:5],
+                'strengths': match.strengths[:5],
+            }
+
+    context = {
+        'total_jobs': total_jobs,
+        'top_skills': top_skills,
+        'missing_skills': missing_skills,
+        'best_match': best_match,
+        'trend_note': 'Only current 30-day snapshots are available. Do not claim month-over-month increases unless prior-period data exists.',
+    }
+    fallback = fallback_ai_insights(context)
+    if not settings.OPENAI_API_KEY:
+        return fallback
+
+    context_json = json.dumps(context, sort_keys=True)
+    digest = hashlib.sha256(context_json.encode('utf-8')).hexdigest()[:16]
+    cache_key = f'dashboard_ai_insights:{user.id}:{digest}'
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    prompt = (
+        'Generate exactly 3 concise dashboard insight cards for a job market intelligence app. '
+        'Use only the provided aggregate data. Do not invent facts. Do not mention prior-month demand changes unless the data includes prior-period values. '
+        'Return valid JSON only: [{"title":"...","text":"...","tone":"green|blue|yellow"}]. '
+        'Each text must be under 24 words and should sound like an analyst insight, not marketing copy.\n\n'
+        f'Data: {context_json}'
+    )
+    request = urllib.request.Request(
+        'https://api.openai.com/v1/responses',
+        data=json.dumps({
+            'model': settings.OPENAI_INSIGHTS_MODEL,
+            'input': prompt,
+            'max_output_tokens': 220,
+            'temperature': 0.2,
+        }).encode('utf-8'),
+        headers={
+            'Authorization': f'Bearer {settings.OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode('utf-8'))
+        text = openai_response_text(payload)
+        generated = json.loads(text)
+        insights = [
+            {
+                'title': str(item.get('title', '')).strip()[:80],
+                'text': str(item.get('text', '')).strip()[:220],
+                'tone': item.get('tone') if item.get('tone') in ('green', 'blue', 'yellow') else 'blue',
+            }
+            for item in generated[:4]
+            if item.get('title') and item.get('text')
+        ]
+    except Exception:
+        insights = fallback
+
+    if insights:
+        cache.set(cache_key, insights, settings.OPENAI_INSIGHTS_CACHE_SECONDS)
+    return insights or fallback
 
 
 def salary_display(job):

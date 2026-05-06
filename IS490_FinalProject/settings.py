@@ -105,3 +105,7 @@ USAJOBS_USER_AGENT = os.environ.get('USAJOBS_USER_AGENT', 'tchan34@illinois.edu'
 USAJOBS_DEFAULT_KEYWORD = os.environ.get('USAJOBS_DEFAULT_KEYWORD', 'information technology')
 USAJOBS_DEFAULT_LOCATION = os.environ.get('USAJOBS_DEFAULT_LOCATION', '')
 USAJOBS_RESULTS_PER_PAGE = int(os.environ.get('USAJOBS_RESULTS_PER_PAGE', '50'))
+
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_INSIGHTS_MODEL = os.environ.get('OPENAI_INSIGHTS_MODEL', 'gpt-4.1-nano')
+OPENAI_INSIGHTS_CACHE_SECONDS = int(os.environ.get('OPENAI_INSIGHTS_CACHE_SECONDS', '21600'))
