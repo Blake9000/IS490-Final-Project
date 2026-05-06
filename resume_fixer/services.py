@@ -18,6 +18,73 @@ from .models import (
     SkillTrendSnapshot,
 )
 
+# ── Sentence-transformer model (loaded once, reused across requests) ─────────
+# We use a module-level singleton so the model is only loaded into memory once
+# when the Django process starts, not on every request. Loading takes ~2 seconds
+# the first time; after that every encode() call is under 50ms on CPU.
+
+_embedding_model = None
+
+
+def get_embedding_model():
+    """
+    Returns the sentence-transformer model, loading it on first call.
+    Uses all-MiniLM-L6-v2: 80MB, runs on CPU, 384-dimensional embeddings.
+    If the model is unavailable (e.g. no internet on first run), returns None
+    and the system falls back to skill-overlap scoring only.
+    """
+    global _embedding_model
+    if _embedding_model is not None:
+        return _embedding_model
+    try:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        return _embedding_model
+    except Exception:
+        return None
+
+
+def embed_text(text):
+    """
+    Encodes a string into a 384-dimensional embedding vector.
+    Returns a plain Python list so it can be stored in Django's JSONField.
+    Returns an empty list if the model is unavailable or the text is empty.
+    """
+    if not text or not text.strip():
+        return []
+    model = get_embedding_model()
+    if model is None:
+        return []
+    try:
+        vector = model.encode(text.strip(), convert_to_numpy=True)
+        return vector.tolist()
+    except Exception:
+        return []
+
+
+def cosine_similarity(vec_a, vec_b):
+    """
+    Computes cosine similarity between two plain Python lists.
+    Returns a float between 0.0 and 1.0. Returns 0.0 if either vector is empty.
+    We implement this manually so we don't need numpy as a hard dependency in
+    views — it's only needed inside the embedding model itself.
+    """
+    if not vec_a or not vec_b:
+        return 0.0
+    if len(vec_a) != len(vec_b):
+        return 0.0
+    try:
+        dot = sum(a * b for a, b in zip(vec_a, vec_b))
+        mag_a = sum(a * a for a in vec_a) ** 0.5
+        mag_b = sum(b * b for b in vec_b) ** 0.5
+        if mag_a == 0 or mag_b == 0:
+            return 0.0
+        return dot / (mag_a * mag_b)
+    except Exception:
+        return 0.0
+
+
+# ── Skill ontology ────────────────────────────────────────────────────────────
 
 SKILL_DEFINITIONS = [
     ('Python', Skill.Category.LANGUAGE, ['python', 'django', 'flask', 'pandas', 'numpy']),
@@ -99,6 +166,8 @@ SAMPLE_JOBS = [
 ]
 
 
+# ── Utilities ─────────────────────────────────────────────────────────────────
+
 def normalize_name(value):
     return re.sub(r'\s+', ' ', value.strip().lower())
 
@@ -112,6 +181,8 @@ def slugify_skill(value):
 def get_working_user(request):
     return request.user
 
+
+# ── Seeding ───────────────────────────────────────────────────────────────────
 
 def seed_reference_data():
     for name, category, aliases in SKILL_DEFINITIONS:
@@ -148,6 +219,8 @@ def seed_reference_data():
     refresh_trend_snapshots()
 
 
+# ── Text extraction ───────────────────────────────────────────────────────────
+
 def extract_text_from_upload(uploaded_file):
     if not uploaded_file:
         return ''
@@ -164,6 +237,8 @@ def extract_text_from_upload(uploaded_file):
     finally:
         uploaded_file.seek(position)
 
+
+# ── Skill extraction ──────────────────────────────────────────────────────────
 
 def extract_skills_from_text(text):
     seed_reference_data()
@@ -188,6 +263,12 @@ def extract_skills_from_text(text):
 
 
 def extract_resume_skills(resume):
+    """
+    Extracts skills from a resume using the ontology pipeline, then generates
+    and stores a sentence-transformer embedding of the full resume text.
+    The embedding is stored in resume.parsed_data so it persists without a
+    schema change.
+    """
     ResumeSkill.objects.filter(resume=resume).delete()
     extracted = extract_skills_from_text(resume.extracted_text)
     for skill, aliases in extracted:
@@ -197,13 +278,29 @@ def extract_resume_skills(resume):
             confidence=Decimal('100.00'),
             evidence=', '.join(sorted(set(aliases))),
         )
+
+    # Generate and store the semantic embedding for this resume.
+    # We store it in parsed_data under the key 'embedding' so we don't
+    # need a migration. The embedding is a 384-dimensional float list.
+    embedding = embed_text(resume.extracted_text)
+    if embedding:
+        resume.parsed_data = resume.parsed_data or {}
+        resume.parsed_data['embedding'] = embedding
+        resume.save(update_fields=['parsed_data', 'updated_at'])
+
     return extracted
 
 
 def extract_job_skills(job):
+    """
+    Extracts skills from a job posting and stores a sentence-transformer
+    embedding of the title plus description in the job's embedding JSONField.
+    """
     JobSkill.objects.filter(job_posting=job).delete()
-    extracted = extract_skills_from_text(f'{job.title}\n{job.description}')
+    full_text = f'{job.title}\n{job.description}'
+    extracted = extract_skills_from_text(full_text)
     required_words = normalize_name(job.description)
+
     for skill, aliases in extracted:
         importance = JobSkill.Importance.MENTIONED
         for alias in aliases:
@@ -220,36 +317,101 @@ def extract_job_skills(job):
             confidence=Decimal('100.00'),
             evidence=', '.join(sorted(set(aliases))),
         )
+
+    # Generate and store the semantic embedding for this job posting.
+    # The JobPosting model already has an embedding JSONField for exactly this.
+    embedding = embed_text(full_text)
+    if embedding:
+        job.embedding = embedding
+        job.save(update_fields=['embedding', 'updated_at'])
+
     return extracted
 
 
+# ── Match scoring ─────────────────────────────────────────────────────────────
+
+# Blending weights for the final score.
+# 70% comes from the weighted skill overlap (explicit, interpretable).
+# 30% comes from semantic similarity (catches synonyms and paraphrasing).
+# We weight skill overlap higher because it is more directly actionable:
+# the user can see exactly which skills to add. The semantic score acts as
+# a boost for resumes that describe skills in different words.
+SKILL_WEIGHT = 0.70
+SEMANTIC_WEIGHT = 0.30
+
+
 def calculate_match(resume, job):
+    """
+    Computes a blended match score between a resume and a job posting.
+
+    The score has two components:
+
+    1. Weighted skill overlap (70% of final score):
+       Each job skill gets a weight based on importance (required=1.5,
+       preferred=1.2, mentioned=1.0). The overlap score is the sum of
+       weights for matched skills divided by total weight, times 100.
+
+    2. Semantic similarity (30% of final score):
+       Cosine similarity between the sentence-transformer embedding of
+       the full resume text and the full job description text, scaled to
+       0-100. This catches cases where the resume uses different words
+       to describe the same skills, like 'built REST services' matching
+       'API development experience required'.
+
+    If no embedding is available for either document (e.g. model not
+    loaded), the full weight falls back to skill overlap alone.
+    """
     resume_skill_ids = set(resume.resume_skills.values_list('skill_id', flat=True))
     job_skills = list(job.job_skills.select_related('skill'))
+
+    # -- Skill overlap score --
     if not job_skills:
-        return Decimal('0.00'), [], [skill.name for skill in Skill.objects.none()]
+        skill_score = Decimal('0.00')
+        strengths = []
+        missing = []
+    else:
+        total_weight = Decimal('0.00')
+        matched_weight = Decimal('0.00')
+        strengths = []
+        missing = []
 
-    total_weight = Decimal('0.00')
-    matched_weight = Decimal('0.00')
-    strengths = []
-    missing = []
+        for job_skill in job_skills:
+            if job_skill.importance == JobSkill.Importance.REQUIRED:
+                weight = Decimal('1.50')
+            elif job_skill.importance == JobSkill.Importance.PREFERRED:
+                weight = Decimal('1.20')
+            else:
+                weight = Decimal('1.00')
+            total_weight += weight
+            if job_skill.skill_id in resume_skill_ids:
+                matched_weight += weight
+                strengths.append(job_skill.skill.name)
+            else:
+                missing.append(job_skill.skill.name)
 
-    for job_skill in job_skills:
-        if job_skill.importance == JobSkill.Importance.REQUIRED:
-            weight = Decimal('1.50')
-        elif job_skill.importance == JobSkill.Importance.PREFERRED:
-            weight = Decimal('1.20')
-        else:
-            weight = Decimal('1.00')
-        total_weight += weight
-        if job_skill.skill_id in resume_skill_ids:
-            matched_weight += weight
-            strengths.append(job_skill.skill.name)
-        else:
-            missing.append(job_skill.skill.name)
+        skill_score = (
+            Decimal('0.00') if total_weight == 0
+            else (matched_weight / total_weight * Decimal('100')).quantize(Decimal('0.01'))
+        )
 
-    score = Decimal('0.00') if total_weight == 0 else (matched_weight / total_weight * Decimal('100')).quantize(Decimal('0.01'))
-    return score, sorted(strengths), sorted(missing)
+    # -- Semantic similarity score --
+    resume_embedding = (resume.parsed_data or {}).get('embedding', [])
+    job_embedding = job.embedding or []
+    raw_similarity = cosine_similarity(resume_embedding, job_embedding)
+    semantic_score = Decimal(str(round(raw_similarity * 100, 2)))
+
+    # -- Blended final score --
+    # If we have a valid semantic score (model loaded, both docs embedded),
+    # blend at 70/30. Otherwise fall back to skill overlap only.
+    if resume_embedding and job_embedding:
+        blended = (
+            Decimal(str(SKILL_WEIGHT)) * skill_score +
+            Decimal(str(SEMANTIC_WEIGHT)) * semantic_score
+        ).quantize(Decimal('0.01'))
+    else:
+        blended = skill_score
+
+    return blended, sorted(strengths), sorted(missing)
 
 
 def update_match_for_resume_and_job(user, resume, job):
@@ -264,7 +426,11 @@ def update_match_for_resume_and_job(user, resume, job):
             'summary': summary,
             'strengths': strengths,
             'missing_skills': missing,
-            'recommendations': ['Add evidence for missing high-demand skills before applying.'] if missing else ['Resume covers the extracted job skills.'],
+            'recommendations': (
+                ['Add evidence for missing high-demand skills before applying.']
+                if missing else
+                ['Resume covers the extracted job skills.']
+            ),
         },
     )
     SkillGap.objects.filter(match=match).exclude(skill__name__in=missing).delete()
@@ -294,12 +460,19 @@ def update_matches_for_job(job):
         update_match_for_resume_and_job(resume.user, resume, job)
 
 
+# ── Remaining helpers (unchanged) ────────────────────────────────────────────
+
 def latest_resume_for_user(user):
     return Resume.objects.filter(user=user).order_by('-is_primary', '-updated_at').first()
 
 
 def filter_jobs(query='', location='', remote_type='', experience_level='', skill=''):
-    qs = JobPosting.objects.select_related('company').prefetch_related('job_skills__skill').filter(is_active=True)
+    qs = (
+        JobPosting.objects
+        .select_related('company')
+        .prefetch_related('job_skills__skill')
+        .filter(is_active=True)
+    )
     if query:
         qs = qs.filter(
             Q(title__icontains=query) |
@@ -320,7 +493,6 @@ def filter_jobs(query='', location='', remote_type='', experience_level='', skil
 
 def top_skill_rows(limit=8):
     total_jobs = JobPosting.objects.filter(is_active=True).count()
-    rows = []
     counts = (
         JobSkill.objects
         .filter(job_posting__is_active=True)
@@ -328,6 +500,7 @@ def top_skill_rows(limit=8):
         .annotate(posting_count=Count('job_posting', distinct=True))
         .order_by('-posting_count', 'skill__normalized_name')[:limit]
     )
+    rows = []
     for item in counts:
         count = item['posting_count']
         percent = 0 if total_jobs == 0 else round(count / total_jobs * 100)
@@ -359,7 +532,7 @@ def dashboard_metrics(user):
         {'label': 'Top Skill Demand', 'value': top_skill_name, 'change': f'{total_jobs} active posting(s)', 'direction': 'up'},
         {'label': 'Avg. Salary Range', 'value': avg_salary_text, 'change': 'Based on stored postings', 'direction': 'neutral'},
         {'label': 'Open Roles', 'value': total_jobs, 'change': f'{saved_count} saved by you', 'direction': 'neutral'},
-        {'label': 'Best Match Score', 'value': match_text, 'change': 'Deterministic skill overlap', 'direction': 'up' if match else 'neutral'},
+        {'label': 'Best Match Score', 'value': match_text, 'change': 'Semantic + skill overlap blend', 'direction': 'up' if match else 'neutral'},
     ]
 
 
@@ -370,10 +543,17 @@ def refresh_trend_snapshots():
     rows = top_skill_rows(10)
     for row in rows:
         skill = Skill.objects.get(pk=row['id'])
-        jobs = JobPosting.objects.filter(job_skills__skill=skill, is_active=True, salary_min__isnull=False, salary_max__isnull=False).distinct()
+        jobs = (
+            JobPosting.objects
+            .filter(job_skills__skill=skill, is_active=True, salary_min__isnull=False, salary_max__isnull=False)
+            .distinct()
+        )
         salaries = [((job.salary_min or 0) + (job.salary_max or 0)) // 2 for job in jobs]
         average_salary = round(sum(salaries) / len(salaries)) if salaries else None
-        demand_percentage = Decimal('0.00') if total_jobs == 0 else Decimal(str(row['count'] / total_jobs * 100)).quantize(Decimal('0.01'))
+        demand_percentage = (
+            Decimal('0.00') if total_jobs == 0
+            else Decimal(str(row['count'] / total_jobs * 100)).quantize(Decimal('0.01'))
+        )
         SkillTrendSnapshot.objects.update_or_create(
             skill=skill,
             role_title='',

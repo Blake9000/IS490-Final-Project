@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import api
 
 urlpatterns = [
     path('', views.dashboard, name='dashboard'),
@@ -22,4 +23,11 @@ urlpatterns = [
     path('resume/<int:pk>/delete/', views.delete_resume, name='delete_resume'),
     path('skill-gaps/', views.skill_gaps, name='skill_gaps'),
     path('settings/', views.settings, name='settings'),
+    path('api/skills/', api.api_skills, name='api_skills'),
+    path('api/jobs/', api.api_job_list, name='api_job_list'),
+    path('api/trends/', api.api_trend_snapshots, name='api_trend_snapshots'),
+
+    # ── CSV exports (login required) ─────────────────────────────────────
+    path('export/matches/', api.export_match_results_csv, name='export_matches_csv'),
+    path('export/skill-gaps/', api.export_skill_gaps_csv, name='export_skill_gaps_csv'),
 ]

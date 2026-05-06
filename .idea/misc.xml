@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="django3" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="django3" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="myenv-django" project-jdk-type="Python SDK" />
 </project>

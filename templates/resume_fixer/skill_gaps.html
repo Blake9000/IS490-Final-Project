@@ -5,7 +5,10 @@
         <h1 class="page-title mb-1">{{ page_title }}</h1>
         <p class="page-subtitle mb-0">{{ page_subtitle }}</p>
     </div>
-    <a class="filter-button text-decoration-none" href="{% url 'resume_upload' %}">Upload Resume</a>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="filter-button text-decoration-none" href="{% url 'resume_upload' %}">Upload Resume</a>
+        <a class="logout-button text-decoration-none" href="{% url 'export_skill_gaps_csv' %}">↓ Export Gaps CSV</a>
+    </div>
 </div>
 <div class="row g-3 align-items-stretch">
     <div class="col-12 col-xl-5">
