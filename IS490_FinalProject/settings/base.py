@@ -21,6 +21,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -103,17 +104,6 @@ ADZUNA_DEFAULT_QUERY = 'software engineer'
 ADZUNA_DEFAULT_LOCATION = ''
 ADZUNA_RESULTS_PER_PAGE = 50
 
-<<<<<<< HEAD:IS490_FinalProject/settings.py
-USAJOBS_API_KEY = os.environ.get('USAJOBS_API_KEY', 'fC5Uu55+zXXR3n46JpT6OFMPEd7zR3BAI3knSa1nuq4=')
-USAJOBS_USER_AGENT = os.environ.get('USAJOBS_USER_AGENT', 'tchan34@illinois.edu')
-USAJOBS_DEFAULT_KEYWORD = os.environ.get('USAJOBS_DEFAULT_KEYWORD', 'information technology')
-USAJOBS_DEFAULT_LOCATION = os.environ.get('USAJOBS_DEFAULT_LOCATION', '')
-USAJOBS_RESULTS_PER_PAGE = int(os.environ.get('USAJOBS_RESULTS_PER_PAGE', '50'))
-
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
-OPENAI_INSIGHTS_MODEL = os.environ.get('OPENAI_INSIGHTS_MODEL', 'gpt-4.1-nano')
-OPENAI_INSIGHTS_CACHE_SECONDS = int(os.environ.get('OPENAI_INSIGHTS_CACHE_SECONDS', '21600'))
-=======
 USAJOBS_API_KEY = 'fC5Uu55+zXXR3n46JpT6OFMPEd7zR3BAI3knSa1nuq4='
 USAJOBS_USER_AGENT = 'tchan34@illinois.edu'
 USAJOBS_DEFAULT_KEYWORD = 'information technology'
@@ -122,4 +112,3 @@ USAJOBS_RESULTS_PER_PAGE = 50
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760
->>>>>>> 0b8930d5ebf3b7906245a2e8d2bb22330b07082a:IS490_FinalProject/settings/base.py
