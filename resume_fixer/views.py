@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Avg
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,8 +25,10 @@ from .services import (
     extract_text_from_upload,
     filter_jobs,
     get_working_user,
+    ensure_external_job_sources,
     latest_resume_for_user,
     refresh_trend_snapshots,
+    refresh_external_job_sources,
     salary_display,
     seed_reference_data,
     top_skill_rows,
@@ -75,6 +78,7 @@ def logout_account(request):
 @login_required(login_url='login')
 def dashboard(request):
     seed_reference_data()
+    ensure_external_job_sources()
     user = get_working_user(request)
     resume = latest_resume_for_user(user)
     top_matches = ResumeJobMatch.objects.select_related('job_posting', 'job_posting__company', 'resume').filter(user=user).order_by('-match_score')[:5]
@@ -87,9 +91,20 @@ def dashboard(request):
             'location': match.job_posting.location or 'Location not listed',
             'salary': salary_display(match.job_posting),
             'match': f'{match.match_score}%',
+            'source': match.job_posting.source_name or 'Stored',
         })
     if not jobs:
-        for job in JobPosting.objects.select_related('company').filter(is_active=True)[:5]:
+        usajobs_jobs = JobPosting.objects.select_related('company').filter(source_name='USAJOBS', is_active=True)[:5]
+        adzuna_jobs = JobPosting.objects.select_related('company').filter(source_name='Adzuna', is_active=True)[:5]
+        fallback_jobs = (
+            JobPosting.objects
+            .select_related('company')
+            .filter(is_active=True)
+            .exclude(source_name__in=['USAJOBS', 'Adzuna'])[:5]
+        )
+        for job in list(usajobs_jobs) + list(adzuna_jobs) + list(fallback_jobs):
+            if len(jobs) >= 5:
+                break
             jobs.append({
                 'id': job.id,
                 'title': job.title,
@@ -97,6 +112,7 @@ def dashboard(request):
                 'location': job.location or 'Location not listed',
                 'salary': salary_display(job),
                 'match': 'Upload resume',
+                'source': job.source_name or 'Stored',
             })
 
     insights = []
@@ -129,6 +145,7 @@ def dashboard(request):
 @login_required(login_url='login')
 def analytics(request):
     seed_reference_data()
+    ensure_external_job_sources()
     refresh_trend_snapshots()
     user = get_working_user(request)
     trend_rows = SkillTrendSnapshot.objects.select_related('skill').order_by('-demand_percentage', 'skill__normalized_name')[:12]
@@ -156,6 +173,7 @@ def analytics(request):
 @login_required(login_url='login')
 def search_jobs(request):
     seed_reference_data()
+    ensure_external_job_sources()
     user = get_working_user(request)
     job_form = JobPostingForm(prefix='job')
     search_form = SavedJobSearchForm(prefix='search')
@@ -194,13 +212,18 @@ def search_jobs(request):
     experience_level = request.GET.get('experience_level', '').strip()
     skill = request.GET.get('skill', '').strip()
     jobs = filter_jobs(query, location, remote_type, experience_level, skill)
+    paginator = Paginator(jobs, 6)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    page_query = query_params.urlencode()
     saved_ids = set(SavedJob.objects.filter(user=user).values_list('job_posting_id', flat=True))
     matches = {
         item.job_posting_id: item
-        for item in ResumeJobMatch.objects.filter(user=user, job_posting__in=jobs).select_related('resume')
+        for item in ResumeJobMatch.objects.filter(user=user, job_posting__in=page_obj.object_list).select_related('resume')
     }
     job_cards = []
-    for job in jobs:
+    for job in page_obj.object_list:
         job_cards.append({
             'job': job,
             'saved': job.id in saved_ids,
@@ -213,6 +236,9 @@ def search_jobs(request):
         'page_title': 'Search Jobs',
         'page_subtitle': 'Search stored postings, add new postings, and save roles for later comparison',
         'job_cards': job_cards,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'page_query': page_query,
         'job_form': job_form,
         'search_form': search_form,
         'filters': {
@@ -225,6 +251,31 @@ def search_jobs(request):
         'remote_choices': JobPosting.RemoteType.choices,
         'experience_choices': JobPosting.ExperienceLevel.choices,
     })
+
+
+@login_required(login_url='login')
+@require_POST
+def refresh_job_sources(request):
+    seed_reference_data()
+    result = refresh_external_job_sources()
+    if result.get('busy'):
+        messages.warning(request, 'A job refresh is already running. Wait a moment, then refresh the page.')
+        return redirect(request.POST.get('next') or 'dashboard')
+    if result.get('database_locked'):
+        messages.warning(request, 'The database is busy finishing another write. Wait a moment, then try Refresh Jobs again.')
+        return redirect(request.POST.get('next') or 'dashboard')
+
+    usajobs_count = result['usajobs_count']
+    adzuna_count = result['adzuna_count']
+    total_count = usajobs_count + adzuna_count
+    if total_count:
+        messages.success(
+            request,
+            f'Refreshed {total_count} job posting(s): {usajobs_count} from USAJOBS and {adzuna_count} from Adzuna.',
+        )
+    else:
+        messages.warning(request, 'No jobs were imported. Check API credentials, network access, or source availability.')
+    return redirect(request.POST.get('next') or 'dashboard')
 
 
 @login_required(login_url='login')

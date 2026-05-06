@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -51,6 +52,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 30,
+        },
     }
 }
 
@@ -88,3 +92,16 @@ MEDIA_ROOT = BASE_DIR / 'media'
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'dashboard'
 LOGOUT_REDIRECT_URL = 'login'
+
+ADZUNA_APP_ID = os.environ.get('ADZUNA_APP_ID', '01d76713')
+ADZUNA_APP_KEY = os.environ.get('ADZUNA_APP_KEY', 'fb2fc02d146f46ba203e273e3974c8b7')
+ADZUNA_COUNTRY = os.environ.get('ADZUNA_COUNTRY', 'us')
+ADZUNA_DEFAULT_QUERY = os.environ.get('ADZUNA_DEFAULT_QUERY', 'software engineer')
+ADZUNA_DEFAULT_LOCATION = os.environ.get('ADZUNA_DEFAULT_LOCATION', '')
+ADZUNA_RESULTS_PER_PAGE = int(os.environ.get('ADZUNA_RESULTS_PER_PAGE', '50'))
+
+USAJOBS_API_KEY = os.environ.get('USAJOBS_API_KEY', 'fC5Uu55+zXXR3n46JpT6OFMPEd7zR3BAI3knSa1nuq4=')
+USAJOBS_USER_AGENT = os.environ.get('USAJOBS_USER_AGENT', 'tchan34@illinois.edu')
+USAJOBS_DEFAULT_KEYWORD = os.environ.get('USAJOBS_DEFAULT_KEYWORD', 'information technology')
+USAJOBS_DEFAULT_LOCATION = os.environ.get('USAJOBS_DEFAULT_LOCATION', '')
+USAJOBS_RESULTS_PER_PAGE = int(os.environ.get('USAJOBS_RESULTS_PER_PAGE', '50'))

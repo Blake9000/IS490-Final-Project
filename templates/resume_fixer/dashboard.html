@@ -31,14 +31,21 @@
         <section class="panel h-100">
             <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
                 <h2 class="panel-title mb-0">Recommended Roles</h2>
-                <a href="{% url 'search_jobs' %}" class="view-link">Search all →</a>
+                <div class="d-flex align-items-center gap-2">
+                    <form method="post" action="{% url 'refresh_job_sources' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button class="link-button" type="submit">Refresh Jobs</button>
+                    </form>
+                    <a href="{% url 'search_jobs' %}" class="view-link">Search all →</a>
+                </div>
             </div>
             <div class="job-list d-flex flex-column gap-3">
                 {% for job in jobs %}
                 <article class="job-card d-flex flex-wrap justify-content-between gap-3">
                     <div>
                         <h3 class="job-title mb-1"><a href="{% url 'job_detail' job.id %}" class="job-title-link">{{ job.title }}</a></h3>
-                        <p class="job-meta mb-0">{{ job.company }} · {{ job.location }}</p>
+                        <p class="job-meta mb-0">{{ job.company }} · {{ job.location }}{% if job.source %} · {{ job.source }}{% endif %}</p>
                     </div>
                     <div class="job-side text-sm-end">
                         <div class="job-salary">{{ job.salary }}</div>

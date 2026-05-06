@@ -9,6 +9,7 @@ urlpatterns = [
     path('logout/', views.logout_account, name='logout'),
     path('analytics/', views.analytics, name='analytics'),
     path('search-jobs/', views.search_jobs, name='search_jobs'),
+    path('jobs/refresh/', views.refresh_job_sources, name='refresh_job_sources'),
     path('jobs/<int:pk>/', views.job_detail, name='job_detail'),
     path('jobs/<int:pk>/save/', views.save_job, name='save_job'),
     path('jobs/<int:pk>/unsave/', views.unsave_job, name='unsave_job'),

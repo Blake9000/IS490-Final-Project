@@ -48,7 +48,14 @@
         <section class="panel h-100">
             <div class="panel-heading d-flex justify-content-between align-items-center mb-3">
                 <h2 class="panel-title mb-0">Jobs</h2>
-                <span class="panel-count">{{ job_cards|length }} result(s)</span>
+                <div class="d-flex align-items-center gap-2">
+                    <form method="post" action="{% url 'refresh_job_sources' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <button class="link-button" type="submit">Refresh Jobs</button>
+                    </form>
+                    <span class="panel-count">{{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ paginator.count }} result(s)</span>
+                </div>
             </div>
             <div class="job-list d-flex flex-column gap-3">
                 {% for card in job_cards %}
@@ -56,7 +63,7 @@
                     <div class="d-flex flex-wrap justify-content-between gap-3">
                         <div>
                             <h3 class="job-title mb-1"><a class="job-title-link" href="{% url 'job_detail' card.job.id %}">{{ card.job.title }}</a></h3>
-                            <p class="job-meta mb-0">{% if card.job.company %}{{ card.job.company.name }}{% else %}Unknown Company{% endif %} · {{ card.job.location|default:'Location not listed' }}</p>
+                            <p class="job-meta mb-0">{% if card.job.company %}{{ card.job.company.name }}{% else %}Unknown Company{% endif %} · {{ card.job.location|default:'Location not listed' }}{% if card.job.source_name %} · {{ card.job.source_name }}{% endif %}</p>
                         </div>
                         <div class="job-side text-sm-end">
                             <div class="job-salary">{{ card.salary }}</div>
@@ -91,6 +98,26 @@
                 <div class="empty-state">No jobs match the current filters.</div>
                 {% endfor %}
             </div>
+            {% if page_obj.has_other_pages %}
+            <div class="pagination-row d-flex flex-wrap align-items-center justify-content-between gap-2 mt-4">
+                <div class="job-meta">Page {{ page_obj.number }} of {{ paginator.num_pages }}</div>
+                <div class="d-flex flex-wrap gap-2">
+                    {% if page_obj.has_previous %}
+                    <a class="filter-pill text-decoration-none" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+                    {% endif %}
+                    {% for number in paginator.page_range %}
+                    {% if number == page_obj.number %}
+                    <span class="filter-button">{{ number }}</span>
+                    {% elif number >= page_obj.number|add:'-2' and number <= page_obj.number|add:'2' %}
+                    <a class="filter-pill text-decoration-none" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ number }}">{{ number }}</a>
+                    {% endif %}
+                    {% endfor %}
+                    {% if page_obj.has_next %}
+                    <a class="filter-pill text-decoration-none" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
         </section>
     </div>
     <div class="col-12 col-xl-5">
