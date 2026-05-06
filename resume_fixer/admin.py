@@ -12,6 +12,7 @@ from .models import (
     SkillGap,
     SkillTrendSnapshot,
     UserProfile,
+    SkillAlias
 )
 
 
@@ -95,3 +96,9 @@ class SkillTrendSnapshotAdmin(admin.ModelAdmin):
     list_display = ('skill', 'role_title', 'location', 'posting_count', 'demand_percentage', 'period_start', 'period_end')
     list_filter = ('period_start', 'period_end', 'skill__category')
     search_fields = ('skill__name', 'role_title', 'location')
+
+@admin.register(SkillAlias)
+class SkillAliasAdmin(admin.ModelAdmin):
+    list_display = ('alias', 'skill', 'source')
+    list_filter = ('source',)
+    search_fields = ('alias', 'normalized_alias', 'skill__name')

@@ -43,8 +43,8 @@ class Skill(TimeStampedModel):
         CERTIFICATION = 'certification', 'Certification'
         OTHER = 'other', 'Other'
 
-    name = models.CharField(max_length=100, unique=True)
-    normalized_name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=255, unique=True)
+    normalized_name = models.CharField(max_length=255, unique=True)
     category = models.CharField(max_length=25, choices=Category.choices, default=Category.OTHER)
 
     class Meta:
@@ -52,6 +52,19 @@ class Skill(TimeStampedModel):
 
     def __str__(self):
         return self.name
+
+class SkillAlias(TimeStampedModel):
+    skill = models.ForeignKey(Skill, on_delete=models.CASCADE, related_name='aliases')
+    alias = models.CharField(max_length=255)
+    normalized_alias = models.CharField(max_length=255, unique=True, db_index=True)
+    source = models.CharField(max_length=50, default='manual')
+
+    class Meta:
+        ordering = ['normalized_alias']
+        indexes = [models.Index(fields=['normalized_alias'])]
+
+    def __str__(self):
+        return f'{self.alias} -> {self.skill.name}'
 
 
 class Resume(TimeStampedModel):

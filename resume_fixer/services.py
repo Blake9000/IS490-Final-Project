@@ -28,6 +28,7 @@ from .models import (
     Skill,
     SkillGap,
     SkillTrendSnapshot,
+    SkillAlias
 )
 
 # ── Sentence-transformer model (loaded once, reused across requests) ─────────
@@ -265,10 +266,24 @@ def get_working_user(request):
 
 def seed_reference_data():
     for name, category, aliases in SKILL_DEFINITIONS:
-        Skill.objects.get_or_create(
+        skill, _ = Skill.objects.get_or_create(
             normalized_name=normalize_name(name),
             defaults={'name': name, 'category': category},
         )
+
+        for alias in [name, *aliases]:
+            normalized_alias = normalize_name(alias)
+            if not normalized_alias or len(normalized_alias) < 2:
+                continue
+
+            SkillAlias.objects.get_or_create(
+                normalized_alias=normalized_alias,
+                defaults={
+                    'skill': skill,
+                    'alias': alias.strip(),
+                    'source': 'manual',
+                },
+            )
 
     if JobPosting.objects.exists():
         return
@@ -296,7 +311,6 @@ def seed_reference_data():
         extract_job_skills(job)
 
     refresh_trend_snapshots()
-
 
 def parse_adzuna_datetime(value):
     if not value:
@@ -665,131 +679,285 @@ def refresh_external_job_sources():
 # ── Text extraction ───────────────────────────────────────────────────────────
 
 def read_uploaded_bytes(uploaded_file):
-    position = uploaded_file.tell()
+    if not uploaded_file:
+        return b''
+
+    position = None
     try:
-        uploaded_file.seek(0)
+        position = uploaded_file.tell()
+    except Exception:
+        position = None
+
+    try:
+        try:
+            uploaded_file.seek(0)
+        except Exception:
+            pass
         raw = uploaded_file.read()
-        if isinstance(raw, str):
-            return raw.encode('utf-8', errors='ignore')
-        return raw or b''
     finally:
-        uploaded_file.seek(position)
+        if position is not None:
+            try:
+                uploaded_file.seek(position)
+            except Exception:
+                pass
+
+    if isinstance(raw, str):
+        return raw.encode('utf-8', errors='ignore')
+    return raw or b''
+
+
+def clean_extracted_text(text):
+    if not text:
+        return ''
+
+    text = text.replace('\x00', ' ')
+    text = re.sub(r'[\uf000-\uf8ff]', ' ', text)
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'\u00a0', ' ', text)
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r' *\n *', '\n', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 def extract_docx_text(raw):
     try:
-        with zipfile.ZipFile(BytesIO(raw)) as archive:
-            document = archive.read('word/document.xml')
-    except (KeyError, zipfile.BadZipFile, OSError):
-        return ''
-
-    try:
-        root = ElementTree.fromstring(document)
-    except ElementTree.ParseError:
+        with zipfile.ZipFile(BytesIO(raw)) as docx:
+            xml = docx.read('word/document.xml')
+    except Exception:
         return ''
 
     namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    try:
+        root = ElementTree.fromstring(xml)
+    except Exception:
+        return ''
+
     paragraphs = []
     for paragraph in root.iter(f'{namespace}p'):
         text = ''.join(node.text or '' for node in paragraph.iter(f'{namespace}t')).strip()
         if text:
             paragraphs.append(text)
-    return '\n'.join(paragraphs)
-
-
-def extract_pdf_text_with_library(raw):
-    for module_name in ('pypdf', 'PyPDF2'):
-        try:
-            module = __import__(module_name)
-            reader = module.PdfReader(BytesIO(raw))
-            pages = [page.extract_text() or '' for page in reader.pages]
-            text = '\n'.join(page for page in pages if page.strip())
-            if is_readable_resume_text(text):
-                return text
-        except Exception:
-            continue
-    return ''
-
-
-def extract_pdf_text_fallback(raw):
-    # Handles only simple, unencrypted PDFs with visible text objects. Most
-    # modern PDFs need pypdf/PyPDF2, so this is a best-effort fallback.
-    text = raw.decode('latin-1', errors='ignore')
-    chunks = re.findall(r'\(([^()]*)\)', text)
-    cleaned = []
-    for chunk in chunks:
-        chunk = chunk.replace(r'\(', '(').replace(r'\)', ')').replace(r'\n', ' ')
-        chunk = re.sub(r'\\[0-7]{1,3}', ' ', chunk)
-        if re.search(r'[A-Za-z]{3,}', chunk):
-            cleaned.append(chunk)
-    text = unescape('\n'.join(cleaned))
-    return text if is_readable_resume_text(text) else ''
+    return clean_extracted_text('\n'.join(paragraphs))
 
 
 def is_readable_resume_text(text):
-    if not text or len(text.strip()) < 80:
+    text = clean_extracted_text(text)
+    if not text or len(text) < 60:
         return False
 
     sample = text[:5000]
     printable = sum(1 for char in sample if char.isprintable() or char in '\r\n\t')
     letters = sum(1 for char in sample if char.isalpha())
-    if printable / max(len(sample), 1) < 0.85:
+
+    if printable / max(len(sample), 1) < 0.80:
         return False
-    if letters / max(len(sample), 1) < 0.25:
+    if letters / max(len(sample), 1) < 0.20:
         return False
 
     lowered = normalize_name(sample)
-    pdf_noise = ('endstream', 'endobj', 'flatedecode', 'xref', 'pdftex', '/length', '/filter')
+    pdf_noise = (
+        'endstream',
+        'endobj',
+        'flatedecode',
+        'xref',
+        'startxref',
+        '/length',
+        '/filter',
+    )
     noise_hits = sum(1 for token in pdf_noise if token in lowered)
     resume_hits = sum(
         1
-        for token in ('experience', 'education', 'skills', 'projects', 'work', 'resume', 'technical')
+        for token in (
+            'experience',
+            'education',
+            'skills',
+            'projects',
+            'work',
+            'resume',
+            'technical',
+            'employment',
+        )
         if token in lowered
     )
+
     return noise_hits < 2 or resume_hits >= 2
+
+
+def _valid_pdf_text(text):
+    text = clean_extracted_text(text)
+    return text if is_readable_resume_text(text) else ''
+
+
+def extract_pdf_text_with_pypdf(raw):
+    for module_name in ('pypdf', 'PyPDF2'):
+        try:
+            module = __import__(module_name)
+            reader = module.PdfReader(BytesIO(raw))
+
+            if getattr(reader, 'is_encrypted', False):
+                try:
+                    reader.decrypt('')
+                except Exception:
+                    pass
+
+            pages = []
+            for page in reader.pages:
+                try:
+                    pages.append(page.extract_text() or '')
+                except Exception:
+                    continue
+
+            text = _valid_pdf_text('\n'.join(page for page in pages if page.strip()))
+            if text:
+                return text
+        except Exception:
+            continue
+
+    return ''
+
+
+def extract_pdf_text_with_pdfminer(raw):
+    try:
+        from pdfminer.high_level import extract_text
+    except Exception:
+        return ''
+
+    try:
+        return _valid_pdf_text(extract_text(BytesIO(raw)) or '')
+    except Exception:
+        return ''
+
+
+def extract_pdf_text_with_pymupdf(raw):
+    try:
+        import fitz
+    except Exception:
+        return ''
+
+    try:
+        with fitz.open(stream=raw, filetype='pdf') as document:
+            text = '\n'.join(page.get_text('text') or '' for page in document)
+        return _valid_pdf_text(text)
+    except Exception:
+        return ''
+
+
+def extract_pdf_text_fallback(raw):
+    text = raw.decode('latin-1', errors='ignore')
+    chunks = re.findall(r'\((?:\\.|[^\\()])*\)', text, flags=re.DOTALL)
+    cleaned = []
+
+    for chunk in chunks:
+        chunk = chunk[1:-1]
+        chunk = chunk.replace(r'\(', '(').replace(r'\)', ')').replace(r'\n', ' ')
+        chunk = re.sub(r'\\[0-7]{1,3}', ' ', chunk)
+
+        if re.search(r'[A-Za-z]{3,}', chunk):
+            cleaned.append(chunk)
+
+    return _valid_pdf_text(unescape('\n'.join(cleaned)))
+
+
+def extract_pdf_text(raw):
+    return (
+        extract_pdf_text_with_pypdf(raw)
+        or extract_pdf_text_with_pdfminer(raw)
+        or extract_pdf_text_with_pymupdf(raw)
+        or extract_pdf_text_fallback(raw)
+    )
+
+
+def extract_text_from_bytes(raw, filename='', content_type=''):
+    if not raw:
+        return ''
+
+    name = (filename or '').lower()
+    content_type = (content_type or '').lower()
+
+    is_pdf = (
+        name.endswith('.pdf')
+        or content_type == 'application/pdf'
+        or raw.startswith(b'%PDF-')
+    )
+
+    if is_pdf:
+        return extract_pdf_text(raw)
+
+    if name.endswith(('.txt', '.md', '.csv')) or content_type.startswith('text/'):
+        return clean_extracted_text(raw.decode('utf-8', errors='ignore'))
+
+    if (
+        name.endswith('.docx')
+        or content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ):
+        return extract_docx_text(raw)
+
+    return ''
 
 
 def extract_text_from_upload(uploaded_file):
     if not uploaded_file:
         return ''
 
-    name = uploaded_file.name.lower()
-    raw = read_uploaded_bytes(uploaded_file)
-    if not raw:
+    return extract_text_from_bytes(
+        read_uploaded_bytes(uploaded_file),
+        filename=getattr(uploaded_file, 'name', ''),
+        content_type=getattr(uploaded_file, 'content_type', ''),
+    )
+
+
+def extract_text_from_stored_file(file_field):
+    if not file_field:
         return ''
 
-    if name.endswith(('.txt', '.md', '.csv')):
-        return raw.decode('utf-8', errors='ignore')
-    if name.endswith('.docx'):
-        return extract_docx_text(raw)
-    if name.endswith('.pdf'):
-        return extract_pdf_text_with_library(raw) or extract_pdf_text_fallback(raw)
-    return ''
+    try:
+        with file_field.open('rb') as handle:
+            raw = handle.read()
+    except Exception:
+        return ''
 
+    return extract_text_from_bytes(raw, filename=getattr(file_field, 'name', ''))
 
-# ── Skill extraction ──────────────────────────────────────────────────────────
+    # ── Skill extraction ──────────────────────────────────────────────────────────
+
+def normalized_phrase_pattern(phrase):
+    escaped = re.escape(normalize_name(phrase))
+    return r'(?<![a-z0-9])' + escaped + r'(?![a-z0-9])'
+
 
 def extract_skills_from_text(text):
     seed_reference_data()
-    found = []
+    found_by_skill_id = {}
     haystack = normalize_name(text or '')
+
     if not haystack:
-        return found
+        return []
 
-    for name, category, aliases in SKILL_DEFINITIONS:
-        matched_aliases = []
-        for alias in aliases:
-            pattern = r'(?<![a-z0-9])' + re.escape(alias.lower()) + r'(?![a-z0-9])'
-            if re.search(pattern, haystack):
-                matched_aliases.append(alias)
-        if matched_aliases:
-            skill, _ = Skill.objects.get_or_create(
-                normalized_name=normalize_name(name),
-                defaults={'name': name, 'category': category},
-            )
-            found.append((skill, matched_aliases))
-    return found
+    aliases = (
+        SkillAlias.objects
+        .select_related('skill')
+        .exclude(normalized_alias='')
+        .order_by('-normalized_alias')
+    )
 
+    for alias in aliases.iterator(chunk_size=2000):
+        normalized_alias = alias.normalized_alias
+
+        if len(normalized_alias) < 3:
+            continue
+
+        if normalized_alias not in haystack:
+            continue
+
+        if not re.search(normalized_phrase_pattern(normalized_alias), haystack):
+            continue
+
+        skill = alias.skill
+        row = found_by_skill_id.setdefault(skill.id, [skill, set()])
+        row[1].add(alias.alias)
+
+    return [(skill, sorted(matches)) for skill, matches in found_by_skill_id.values()]
 
 def extract_resume_skills(resume):
     """
@@ -1113,3 +1281,5 @@ def salary_display(job):
     if job.salary_max:
         return f'Up to ${job.salary_max:,}'
     return 'Salary not listed'
+
+

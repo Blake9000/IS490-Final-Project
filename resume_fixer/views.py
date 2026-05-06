@@ -34,6 +34,7 @@ from .services import (
     top_skill_rows,
     update_matches_for_job,
     update_matches_for_resume,
+    extract_text_from_stored_file
 )
 
 
@@ -370,31 +371,49 @@ def resume_upload(request):
     seed_reference_data()
     user = get_working_user(request)
     form = ResumeUploadForm()
+
     if request.method == 'POST':
         form = ResumeUploadForm(request.POST, request.FILES)
+
         if form.is_valid():
             resume_obj = form.save(commit=False)
             resume_obj.user = user
-            uploaded_text = extract_text_from_upload(request.FILES.get('file'))
+
+            uploaded_file = request.FILES.get('file')
+            uploaded_text = extract_text_from_upload(uploaded_file)
+
             if uploaded_text and not resume_obj.extracted_text:
                 resume_obj.extracted_text = uploaded_text
-            if request.FILES.get('file') and not resume_obj.extracted_text:
+
+            if uploaded_file and not resume_obj.extracted_text:
                 messages.warning(
                     request,
-                    'The resume file was uploaded, but no readable text was extracted. Install pypdf/PyPDF2 or paste the resume text to generate accurate skills and matches.',
+                    'The resume file was uploaded, but no readable text was extracted. Install pypdf and pdfminer.six, then re-upload it. If it is a scanned image PDF, paste the resume text manually.',
                 )
+
             if resume_obj.is_primary:
                 Resume.objects.filter(user=user, is_primary=True).update(is_primary=False)
+
             resume_obj.save()
+
             extracted = extract_resume_skills(resume_obj)
             update_matches_for_resume(user, resume_obj)
+
             if extracted:
-                messages.success(request, f'Resume uploaded and matched against stored jobs. Extracted {len(extracted)} skill(s).')
+                messages.success(
+                    request,
+                    f'Resume uploaded and matched against stored jobs. Extracted {len(extracted)} skill(s).',
+                )
             else:
-                messages.warning(request, 'Resume uploaded, but no skills were extracted. Add or paste resume text before relying on match scores.')
+                messages.warning(
+                    request,
+                    'Resume uploaded, but no skills were extracted. Add or paste resume text before relying on match scores.',
+                )
+
             return redirect('resume_detail', pk=resume_obj.pk)
 
     resumes = Resume.objects.filter(user=user).prefetch_related('resume_skills__skill')
+
     return render(request, 'resume_fixer/resume.html', {
         'page_key': 'resume',
         'page_title': 'Resume',
@@ -403,19 +422,50 @@ def resume_upload(request):
         'resumes': resumes,
     })
 
-
 @login_required(login_url='login')
 def resume_detail(request, pk):
     seed_reference_data()
     user = get_working_user(request)
-    resume_obj = get_object_or_404(Resume.objects.prefetch_related('resume_skills__skill'), pk=pk, user=user)
-    matches = ResumeJobMatch.objects.select_related('job_posting', 'job_posting__company').filter(user=user, resume=resume_obj).order_by('-match_score')
+
+    resume_obj = get_object_or_404(
+        Resume.objects.prefetch_related('resume_skills__skill'),
+        pk=pk,
+        user=user,
+    )
+
+    if resume_obj.file and not resume_obj.extracted_text:
+        recovered_text = extract_text_from_stored_file(resume_obj.file)
+
+        if recovered_text:
+            resume_obj.extracted_text = recovered_text
+            resume_obj.save(update_fields=['extracted_text', 'updated_at'])
+
+            extract_resume_skills(resume_obj)
+            update_matches_for_resume(user, resume_obj)
+
+            resume_obj = get_object_or_404(
+                Resume.objects.prefetch_related('resume_skills__skill'),
+                pk=pk,
+                user=user,
+            )
+
+            messages.success(
+                request,
+                'Recovered readable text from this PDF and refreshed the extracted skills.',
+            )
+
+    matches = (
+        ResumeJobMatch.objects
+        .select_related('job_posting', 'job_posting__company')
+        .filter(user=user, resume=resume_obj)
+        .order_by('-match_score')
+    )
+
     return render(request, 'resume_fixer/resume_detail.html', {
         'page_key': 'resume',
         'resume_obj': resume_obj,
         'matches': matches,
     })
-
 
 @login_required(login_url='login')
 def resume_file(request, pk):
