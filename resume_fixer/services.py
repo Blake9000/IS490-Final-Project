@@ -3,11 +3,15 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from contextlib import contextmanager
 from collections import Counter
 from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
+from html import unescape
+from io import BytesIO
 from threading import Lock
+from xml.etree import ElementTree
 
 from django.conf import settings
 from django.db import OperationalError
@@ -98,21 +102,73 @@ SKILL_DEFINITIONS = [
     ('Python', Skill.Category.LANGUAGE, ['python', 'django', 'flask', 'pandas', 'numpy']),
     ('JavaScript', Skill.Category.LANGUAGE, ['javascript', 'js', 'node.js', 'nodejs']),
     ('TypeScript', Skill.Category.LANGUAGE, ['typescript', 'ts']),
+    ('Java', Skill.Category.LANGUAGE, ['java', 'spring boot', 'spring framework']),
+    ('C++', Skill.Category.LANGUAGE, ['c++', 'cpp']),
+    ('C#', Skill.Category.LANGUAGE, ['c#', 'c sharp', '.net']),
+    ('PHP', Skill.Category.LANGUAGE, ['php', 'laravel']),
+    ('Ruby', Skill.Category.LANGUAGE, ['ruby', 'ruby on rails', 'rails']),
+    ('Go', Skill.Category.LANGUAGE, ['golang', 'go language']),
+    ('R Programming', Skill.Category.LANGUAGE, ['r programming', 'r language', 'rstudio']),
+    ('Swift', Skill.Category.LANGUAGE, ['swift', 'ios development']),
+    ('Kotlin', Skill.Category.LANGUAGE, ['kotlin', 'android development']),
+    ('HTML', Skill.Category.FRAMEWORK, ['html', 'html5']),
+    ('CSS', Skill.Category.FRAMEWORK, ['css', 'css3', 'sass', 'scss']),
+    ('Tailwind CSS', Skill.Category.FRAMEWORK, ['tailwind', 'tailwind css']),
     ('React', Skill.Category.FRAMEWORK, ['react', 'react.js', 'reactjs']),
+    ('Angular', Skill.Category.FRAMEWORK, ['angular', 'angularjs']),
+    ('Vue.js', Skill.Category.FRAMEWORK, ['vue', 'vue.js', 'vuejs']),
+    ('Next.js', Skill.Category.FRAMEWORK, ['next.js', 'nextjs']),
+    ('Vite', Skill.Category.TOOL, ['vite']),
+    ('Express.js', Skill.Category.FRAMEWORK, ['express', 'express.js', 'expressjs']),
     ('Django', Skill.Category.FRAMEWORK, ['django']),
+    ('Django REST Framework', Skill.Category.FRAMEWORK, ['django rest framework', 'drf']),
     ('Flask', Skill.Category.FRAMEWORK, ['flask']),
+    ('FastAPI', Skill.Category.FRAMEWORK, ['fastapi', 'fast api']),
     ('SQL', Skill.Category.DATABASE, ['sql', 'postgresql', 'postgres', 'mysql', 'sqlite', 'database']),
+    ('PostgreSQL', Skill.Category.DATABASE, ['postgresql', 'postgres']),
+    ('MySQL', Skill.Category.DATABASE, ['mysql']),
+    ('Microsoft SQL Server', Skill.Category.DATABASE, ['sql server', 'microsoft sql server', 'tsql', 't-sql']),
     ('MongoDB', Skill.Category.DATABASE, ['mongodb', 'mongo']),
+    ('Redis', Skill.Category.DATABASE, ['redis']),
+    ('SQLite', Skill.Category.DATABASE, ['sqlite']),
+    ('Supabase', Skill.Category.CLOUD, ['supabase']),
+    ('Firebase', Skill.Category.CLOUD, ['firebase', 'firestore']),
     ('AWS', Skill.Category.CLOUD, ['aws', 'amazon web services', 'ec2', 's3', 'lambda']),
     ('Azure', Skill.Category.CLOUD, ['azure', 'microsoft azure']),
+    ('Google Cloud', Skill.Category.CLOUD, ['gcp', 'google cloud', 'google cloud platform']),
     ('Docker', Skill.Category.TOOL, ['docker', 'container', 'containers']),
     ('Kubernetes', Skill.Category.TOOL, ['kubernetes', 'k8s']),
     ('Git', Skill.Category.TOOL, ['git', 'github', 'gitlab']),
     ('Linux', Skill.Category.TOOL, ['linux', 'ubuntu', 'bash', 'shell scripting']),
+    ('CI/CD', Skill.Category.TOOL, ['ci/cd', 'continuous integration', 'continuous deployment', 'jenkins', 'github actions']),
+    ('Terraform', Skill.Category.TOOL, ['terraform', 'infrastructure as code', 'iac']),
+    ('Jira', Skill.Category.TOOL, ['jira']),
+    ('Figma', Skill.Category.TOOL, ['figma']),
+    ('Microsoft Excel', Skill.Category.TOOL, ['excel', 'microsoft excel', 'pivot tables', 'vlookup']),
+    ('OAuth', Skill.Category.TOOL, ['oauth', 'oauth 2.0', 'oauth2']),
+    ('Gmail API', Skill.Category.FRAMEWORK, ['gmail api']),
+    ('OpenAI API', Skill.Category.FRAMEWORK, ['openai api', 'openai structured outputs']),
+    ('Flutter', Skill.Category.FRAMEWORK, ['flutter']),
+    ('FlutterFlow', Skill.Category.TOOL, ['flutterflow', 'flutter flow']),
     ('REST APIs', Skill.Category.FRAMEWORK, ['rest', 'rest api', 'restful', 'api development']),
+    ('GraphQL', Skill.Category.FRAMEWORK, ['graphql', 'apollo']),
     ('Machine Learning', Skill.Category.OTHER, ['machine learning', 'ml', 'scikit-learn', 'tensorflow', 'pytorch']),
+    ('Artificial Intelligence', Skill.Category.OTHER, ['artificial intelligence', 'ai', 'generative ai', 'llm', 'large language model']),
     ('Data Analysis', Skill.Category.OTHER, ['data analysis', 'analytics', 'data visualization', 'tableau', 'power bi']),
+    ('Power BI', Skill.Category.TOOL, ['power bi', 'powerbi']),
+    ('Tableau', Skill.Category.TOOL, ['tableau']),
+    ('ETL', Skill.Category.OTHER, ['etl', 'data pipelines', 'data pipeline']),
+    ('Data Warehousing', Skill.Category.DATABASE, ['data warehouse', 'data warehousing', 'snowflake', 'redshift', 'bigquery']),
+    ('Statistics', Skill.Category.OTHER, ['statistics', 'statistical analysis', 'hypothesis testing', 'regression analysis']),
     ('Cybersecurity', Skill.Category.OTHER, ['cybersecurity', 'security', 'siem', 'incident response']),
+    ('Network Security', Skill.Category.OTHER, ['network security', 'firewall', 'vpn']),
+    ('Cloud Security', Skill.Category.CLOUD, ['cloud security', 'iam', 'identity and access management']),
+    ('Testing', Skill.Category.TOOL, ['unit testing', 'test automation', 'pytest', 'jest', 'selenium']),
+    ('UI/UX Design', Skill.Category.OTHER, ['ui/ux', 'ux design', 'user experience', 'wireframes', 'prototyping']),
+    ('Product Management', Skill.Category.OTHER, ['product management', 'roadmap', 'user stories']),
+    ('Requirements Analysis', Skill.Category.OTHER, ['requirements analysis', 'business requirements', 'systems analysis']),
+    ('Customer Service', Skill.Category.SOFT_SKILL, ['customer service', 'client support', 'customer support']),
+    ('Leadership', Skill.Category.SOFT_SKILL, ['leadership', 'team leadership', 'mentoring']),
     ('Communication', Skill.Category.SOFT_SKILL, ['communication', 'communicate', 'stakeholder']),
     ('Project Management', Skill.Category.SOFT_SKILL, ['project management', 'agile', 'scrum', 'kanban']),
 ]
@@ -608,21 +664,107 @@ def refresh_external_job_sources():
 
 # ── Text extraction ───────────────────────────────────────────────────────────
 
-def extract_text_from_upload(uploaded_file):
-    if not uploaded_file:
-        return ''
-    name = uploaded_file.name.lower()
-    if not name.endswith(('.txt', '.md', '.csv')):
-        return ''
+def read_uploaded_bytes(uploaded_file):
     position = uploaded_file.tell()
     try:
         uploaded_file.seek(0)
         raw = uploaded_file.read()
         if isinstance(raw, str):
-            return raw
-        return raw.decode('utf-8', errors='ignore')
+            return raw.encode('utf-8', errors='ignore')
+        return raw or b''
     finally:
         uploaded_file.seek(position)
+
+
+def extract_docx_text(raw):
+    try:
+        with zipfile.ZipFile(BytesIO(raw)) as archive:
+            document = archive.read('word/document.xml')
+    except (KeyError, zipfile.BadZipFile, OSError):
+        return ''
+
+    try:
+        root = ElementTree.fromstring(document)
+    except ElementTree.ParseError:
+        return ''
+
+    namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    paragraphs = []
+    for paragraph in root.iter(f'{namespace}p'):
+        text = ''.join(node.text or '' for node in paragraph.iter(f'{namespace}t')).strip()
+        if text:
+            paragraphs.append(text)
+    return '\n'.join(paragraphs)
+
+
+def extract_pdf_text_with_library(raw):
+    for module_name in ('pypdf', 'PyPDF2'):
+        try:
+            module = __import__(module_name)
+            reader = module.PdfReader(BytesIO(raw))
+            pages = [page.extract_text() or '' for page in reader.pages]
+            text = '\n'.join(page for page in pages if page.strip())
+            if is_readable_resume_text(text):
+                return text
+        except Exception:
+            continue
+    return ''
+
+
+def extract_pdf_text_fallback(raw):
+    # Handles only simple, unencrypted PDFs with visible text objects. Most
+    # modern PDFs need pypdf/PyPDF2, so this is a best-effort fallback.
+    text = raw.decode('latin-1', errors='ignore')
+    chunks = re.findall(r'\(([^()]*)\)', text)
+    cleaned = []
+    for chunk in chunks:
+        chunk = chunk.replace(r'\(', '(').replace(r'\)', ')').replace(r'\n', ' ')
+        chunk = re.sub(r'\\[0-7]{1,3}', ' ', chunk)
+        if re.search(r'[A-Za-z]{3,}', chunk):
+            cleaned.append(chunk)
+    text = unescape('\n'.join(cleaned))
+    return text if is_readable_resume_text(text) else ''
+
+
+def is_readable_resume_text(text):
+    if not text or len(text.strip()) < 80:
+        return False
+
+    sample = text[:5000]
+    printable = sum(1 for char in sample if char.isprintable() or char in '\r\n\t')
+    letters = sum(1 for char in sample if char.isalpha())
+    if printable / max(len(sample), 1) < 0.85:
+        return False
+    if letters / max(len(sample), 1) < 0.25:
+        return False
+
+    lowered = normalize_name(sample)
+    pdf_noise = ('endstream', 'endobj', 'flatedecode', 'xref', 'pdftex', '/length', '/filter')
+    noise_hits = sum(1 for token in pdf_noise if token in lowered)
+    resume_hits = sum(
+        1
+        for token in ('experience', 'education', 'skills', 'projects', 'work', 'resume', 'technical')
+        if token in lowered
+    )
+    return noise_hits < 2 or resume_hits >= 2
+
+
+def extract_text_from_upload(uploaded_file):
+    if not uploaded_file:
+        return ''
+
+    name = uploaded_file.name.lower()
+    raw = read_uploaded_bytes(uploaded_file)
+    if not raw:
+        return ''
+
+    if name.endswith(('.txt', '.md', '.csv')):
+        return raw.decode('utf-8', errors='ignore')
+    if name.endswith('.docx'):
+        return extract_docx_text(raw)
+    if name.endswith('.pdf'):
+        return extract_pdf_text_with_library(raw) or extract_pdf_text_fallback(raw)
+    return ''
 
 
 # ── Skill extraction ──────────────────────────────────────────────────────────

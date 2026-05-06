@@ -71,7 +71,7 @@ class ResumeUploadForm(forms.ModelForm):
         widget=forms.Textarea(attrs={
             'class': FIELD_CLASS,
             'rows': 10,
-            'placeholder': 'Paste resume text here. TXT, MD, and CSV uploads can also be read automatically.',
+            'placeholder': 'Paste resume text here, or upload TXT, MD, CSV, DOCX, or a text-readable PDF.',
         }),
     )
 

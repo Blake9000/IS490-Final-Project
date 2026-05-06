@@ -378,12 +378,20 @@ def resume_upload(request):
             uploaded_text = extract_text_from_upload(request.FILES.get('file'))
             if uploaded_text and not resume_obj.extracted_text:
                 resume_obj.extracted_text = uploaded_text
+            if request.FILES.get('file') and not resume_obj.extracted_text:
+                messages.warning(
+                    request,
+                    'The resume file was uploaded, but no readable text was extracted. Install pypdf/PyPDF2 or paste the resume text to generate accurate skills and matches.',
+                )
             if resume_obj.is_primary:
                 Resume.objects.filter(user=user, is_primary=True).update(is_primary=False)
             resume_obj.save()
-            extract_resume_skills(resume_obj)
+            extracted = extract_resume_skills(resume_obj)
             update_matches_for_resume(user, resume_obj)
-            messages.success(request, 'Resume uploaded and matched against stored jobs.')
+            if extracted:
+                messages.success(request, f'Resume uploaded and matched against stored jobs. Extracted {len(extracted)} skill(s).')
+            else:
+                messages.warning(request, 'Resume uploaded, but no skills were extracted. Add or paste resume text before relying on match scores.')
             return redirect('resume_detail', pk=resume_obj.pk)
 
     resumes = Resume.objects.filter(user=user).prefetch_related('resume_skills__skill')
